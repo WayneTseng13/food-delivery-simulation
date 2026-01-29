@@ -668,14 +668,15 @@ def extract_area_ratio_and_threshold(design_name):
         ratio = float(match.group(2))
         proportion_pct = int(match.group(3))
         return area_size, ratio, proportion_pct
-    else:
-        raise ValueError(f"Could not parse design name: {design_name}")
+    return None, None, None
 
-# Extract metrics for tabular display
+# Extract comprehensive metrics for table
 metrics_data = []
 
 for design_name, analysis_result in design_analysis_results.items():
     area_size, ratio, proportion_pct = extract_area_ratio_and_threshold(design_name)
+    if area_size is None:
+        continue
     
     stats_with_cis = analysis_result.get('statistics_with_cis', {})
     
@@ -694,35 +695,7 @@ for design_name, analysis_result in design_analysis_results.items():
     mean_of_stds = assignment_time.get('mean_of_stds', {})
     mos_estimate = mean_of_stds.get('point_estimate', 0)
     
-    # Pickup Travel Time Statistics (Mean of Means with CI)
-    pickup_travel_time = order_metrics.get('pickup_travel_time', {})
-    pickup_travel_time_mom = pickup_travel_time.get('mean_of_means', {})
-    pickup_travel_time_estimate = pickup_travel_time_mom.get('point_estimate', 0)
-    pickup_travel_time_ci = pickup_travel_time_mom.get('confidence_interval', [0, 0])
-    pickup_travel_time_ci_width = (pickup_travel_time_ci[1] - pickup_travel_time_ci[0]) / 2 if pickup_travel_time_ci[0] is not None else 0
-    
-    # Delivery Travel Time Statistics (Mean of Means with CI)
-    delivery_travel_time = order_metrics.get('delivery_travel_time', {})
-    delivery_travel_time_mom = delivery_travel_time.get('mean_of_means', {})
-    delivery_travel_time_estimate = delivery_travel_time_mom.get('point_estimate', 0)
-    delivery_travel_time_ci = delivery_travel_time_mom.get('confidence_interval', [0, 0])
-    delivery_travel_time_ci_width = (delivery_travel_time_ci[1] - delivery_travel_time_ci[0]) / 2 if delivery_travel_time_ci[0] is not None else 0
-    
-    # Travel Time Statistics (Mean of Means with CI)
-    travel_time = order_metrics.get('travel_time', {})
-    travel_time_mom = travel_time.get('mean_of_means', {})
-    travel_time_estimate = travel_time_mom.get('point_estimate', 0)
-    travel_time_ci = travel_time_mom.get('confidence_interval', [0, 0])
-    travel_time_ci_width = (travel_time_ci[1] - travel_time_ci[0]) / 2 if travel_time_ci[0] is not None else 0
-    
-    # Fulfillment Time Statistics (Mean of Means with CI)
-    fulfillment_time = order_metrics.get('fulfillment_time', {})
-    fulfillment_time_mom = fulfillment_time.get('mean_of_means', {})
-    fulfillment_time_estimate = fulfillment_time_mom.get('point_estimate', 0)
-    fulfillment_time_ci = fulfillment_time_mom.get('confidence_interval', [0, 0])
-    fulfillment_time_ci_width = (fulfillment_time_ci[1] - fulfillment_time_ci[0]) / 2 if fulfillment_time_ci[0] is not None else 0
-    
-    # First Contact Time Statistics (Mean of Means with CI) - from delivery_unit_metrics
+    # First Contact Time Statistics
     delivery_unit_metrics = stats_with_cis.get('delivery_unit_metrics', {})
     first_contact_time = delivery_unit_metrics.get('first_contact_time', {})
     first_contact_time_mom = first_contact_time.get('mean_of_means', {})
@@ -730,14 +703,50 @@ for design_name, analysis_result in design_analysis_results.items():
     first_contact_time_ci = first_contact_time_mom.get('confidence_interval', [0, 0])
     first_contact_time_ci_width = (first_contact_time_ci[1] - first_contact_time_ci[0]) / 2 if first_contact_time_ci[0] is not None else 0
     
-    # Growth Rate
+    # Pickup Travel Time Statistics
+    pickup_travel_time = order_metrics.get('pickup_travel_time', {})
+    pickup_travel_time_mom = pickup_travel_time.get('mean_of_means', {})
+    pickup_travel_time_estimate = pickup_travel_time_mom.get('point_estimate', 0)
+    pickup_travel_time_ci = pickup_travel_time_mom.get('confidence_interval', [0, 0])
+    pickup_travel_time_ci_width = (pickup_travel_time_ci[1] - pickup_travel_time_ci[0]) / 2 if pickup_travel_time_ci[0] is not None else 0
+    
+    # Delivery Travel Time Statistics
+    delivery_travel_time = order_metrics.get('delivery_travel_time', {})
+    delivery_travel_time_mom = delivery_travel_time.get('mean_of_means', {})
+    delivery_travel_time_estimate = delivery_travel_time_mom.get('point_estimate', 0)
+    delivery_travel_time_ci = delivery_travel_time_mom.get('confidence_interval', [0, 0])
+    delivery_travel_time_ci_width = (delivery_travel_time_ci[1] - delivery_travel_time_ci[0]) / 2 if delivery_travel_time_ci[0] is not None else 0
+    
+    # Travel Time Statistics
+    travel_time = order_metrics.get('travel_time', {})
+    travel_time_mom = travel_time.get('mean_of_means', {})
+    travel_time_estimate = travel_time_mom.get('point_estimate', 0)
+    travel_time_ci = travel_time_mom.get('confidence_interval', [0, 0])
+    travel_time_ci_width = (travel_time_ci[1] - travel_time_ci[0]) / 2 if travel_time_ci[0] is not None else 0
+    
+    # Fulfillment Time Statistics
+    fulfillment_time = order_metrics.get('fulfillment_time', {})
+    fulfillment_time_mom = fulfillment_time.get('mean_of_means', {})
+    fulfillment_time_estimate = fulfillment_time_mom.get('point_estimate', 0)
+    fulfillment_time_ci = fulfillment_time_mom.get('confidence_interval', [0, 0])
+    fulfillment_time_ci_width = (fulfillment_time_ci[1] - fulfillment_time_ci[0]) / 2 if fulfillment_time_ci[0] is not None else 0
+    
+    # Queue Dynamics Metrics
     queue_dynamics_metrics = stats_with_cis.get('queue_dynamics_metrics', {})
+    
+    # Growth Rate
     growth_rate = queue_dynamics_metrics.get('unassigned_entities_growth_rate', {})
     growth_rate_estimate = growth_rate.get('point_estimate', 0)
     growth_rate_ci = growth_rate.get('confidence_interval', [0, 0])
     growth_rate_ci_width = (growth_rate_ci[1] - growth_rate_ci[0]) / 2 if growth_rate_ci[0] is not None else 0
     
-    # Pairing Rate - from system_metrics
+    # Average Queue Size (NEW METRIC)
+    avg_queue = queue_dynamics_metrics.get('average_unassigned_entities', {})
+    avg_queue_estimate = avg_queue.get('point_estimate', 0)
+    avg_queue_ci = avg_queue.get('confidence_interval', [0, 0])
+    avg_queue_ci_width = (avg_queue_ci[1] - avg_queue_ci[0]) / 2 if avg_queue_ci[0] is not None else 0
+    
+    # Pairing Rate
     system_metrics = stats_with_cis.get('system_metrics', {})
     pairing_rate = system_metrics.get('system_pairing_rate', {})
     pairing_rate_estimate = pairing_rate.get('point_estimate', None)
@@ -764,6 +773,8 @@ for design_name, analysis_result in design_analysis_results.items():
         'fulfillment_time_ci_width': fulfillment_time_ci_width,
         'growth_rate_estimate': growth_rate_estimate,
         'growth_rate_ci_width': growth_rate_ci_width,
+        'avg_queue_estimate': avg_queue_estimate,  # NEW
+        'avg_queue_ci_width': avg_queue_ci_width,  # NEW
         'pairing_rate_estimate': pairing_rate_estimate,
         'pairing_rate_ci_width': pairing_rate_ci_width
     })
@@ -773,20 +784,19 @@ metrics_data.sort(key=lambda x: (x['area_size'], x['proportion_pct']))
 
 # Display table grouped by area size
 print("\n🎯 PRIMARY VIEW: GROUPED BY DELIVERY AREA SIZE")
-print("="*260)
-print(f"  {'Area':<6} {'Ratio':<6} {'Threshold':<12} │ {'Mean of Means':>18} {'Std of':>10} {'Mean of':>10} │ {'First Contact':>18} │ {'Pickup':>18} │ {'Delivery':>18} │ {'Travel Time':>18} │ {'Fulfillment':>18} │ {'Growth Rate':>22} │ {'Pairing Rate':>18}")
-print(f"  {'(km²)':<6} {'':6} {'Proportion':12} │ {'(Assign Time)':>18} {'Means':>10} {'Stds':>10} │ {'Time':>18} │ {'Travel':>18} │ {'Travel':>18} │ {'(Total)':>18} │ {'Time':>18} │ {'(entities/min)':>22} │ {'(% paired)':>18}")
-print("="*260)
+print("="*280)
+print(f"  {'Area':<6} {'Ratio':<6} {'Threshold':<12} │ {'Mean of Means':>18} {'Std of':>10} {'Mean of':>10} │ {'First Contact':>18} │ {'Pickup':>18} │ {'Delivery':>18} │ {'Travel Time':>18} │ {'Fulfillment':>18} │ {'Avg Queue':>18} │ {'Growth Rate':>22} │ {'Pairing Rate':>18}")
+print(f"  {'(km²)':<6} {'':6} {'Proportion':12} │ {'(Assign Time)':>18} {'Means':>10} {'Stds':>10} │ {'Time':>18} │ {'Travel':>18} │ {'Travel':>18} │ {'(Total)':>18} │ {'Time':>18} │ {'Size':>18} │ {'(entities/min)':>22} │ {'(% paired)':>18}")
+print("="*280)
 
 current_area = None
 for row in metrics_data:
     # Add separator between different area sizes
     if current_area is not None and row['area_size'] != current_area:
-        print("-" * 260)
+        print("-" * 280)
     current_area = row['area_size']
     
     # Format metrics
-    proportion_display = f"{row['proportion_pct']}%"
     mom_str = f"{row['mom_estimate']:6.2f} ± {row['mom_ci_width']:5.2f}"
     som_str = f"{row['som_estimate']:6.2f}"
     mos_str = f"{row['mos_estimate']:6.2f}"
@@ -795,36 +805,20 @@ for row in metrics_data:
     delivery_str = f"{row['delivery_travel_time_estimate']:6.2f} ± {row['delivery_travel_time_ci_width']:5.2f}"
     travel_str = f"{row['travel_time_estimate']:6.2f} ± {row['travel_time_ci_width']:5.2f}"
     fulfill_str = f"{row['fulfillment_time_estimate']:6.2f} ± {row['fulfillment_time_ci_width']:5.2f}"
+    avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:5.2f}"  # NEW
     growth_str = f"{row['growth_rate_estimate']:7.4f} ± {row['growth_rate_ci_width']:6.4f}"
     
     if row['pairing_rate_estimate'] is not None:
         pairing_pct = row['pairing_rate_estimate'] * 100
         pairing_ci_pct = row['pairing_rate_ci_width'] * 100 if row['pairing_rate_ci_width'] else 0
-        pairing_str = f"{pairing_pct:6.2f} ± {pairing_ci_pct:5.2f}"
+        pairing_str = f"{pairing_pct:6.2f} ± {pairing_ci_pct:5.2f}%"
     else:
         pairing_str = "N/A"
     
-    print(f"  {row['area_size']:<6} {row['ratio']:<6.1f} {proportion_display:<12} │ "
-          f"{mom_str:>18} {som_str:>10} {mos_str:>10} │ "
-          f"{first_contact_str:>18} │ "
-          f"{pickup_str:>18} │ "
-          f"{delivery_str:>18} │ "
-          f"{travel_str:>18} │ "
-          f"{fulfill_str:>18} │ "
-          f"{growth_str:>22} │ "
-          f"{pairing_str:>18}")
+    print(f"  {row['area_size']:>4}   {row['ratio']:>4.1f}   {row['proportion_pct']:>3}%          │ {mom_str:>18s} {som_str:>10s} {mos_str:>10s} │ {first_contact_str:>18s} │ {pickup_str:>18s} │ {delivery_str:>18s} │ {travel_str:>18s} │ {fulfill_str:>18s} │ {avg_queue_str:>18s} │ {growth_str:>22s} │ {pairing_str:>18s}")
 
-print("="*260)
+print("="*280)
 
-print("\n📊 KEY OBSERVATIONS:")
-print("  • Assignment Time: Primary customer-facing metric (Mean of Means with 95% CI)")
-print("  • Growth Rate: System stability indicator (positive = unstable)")
-print("  • Pairing Rate: Proportion of orders assigned as pairs")
-print("  • Threshold Proportion: % of area dimension used for pairing thresholds")
-print("  • Compare across threshold proportions within each area size")
-print("  • Look for goldilocks pattern: optimal proportion balancing quality and quantity")
-
-print("\n" + "="*80)
-print("✓ PAIRING THRESHOLDS STUDY COMPLETE")
-print("="*80)
+print("\n✓ Metric extraction complete")
+print("✓ Results table includes average queue size")
 # %%
