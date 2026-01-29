@@ -571,60 +571,86 @@ print(f"  • Total runs: {total_runs}")
 print(f"  • Estimated time: ~{estimated_time} seconds (~{estimated_time/60:.1f} minutes)")
 
 
-# %% CELL 11: Run Experiment
-print("\n" + "="*80)
-print("STARTING EXPERIMENTAL RUNS")
-print("="*80)
+# %% CELL 11: Execute Experimental Study
+print("\n" + "="*50)
+print("EXECUTING EXPERIMENTAL STUDY")
+print("="*50)
 
-experimental_runner = ExperimentalRunner()
+runner = ExperimentalRunner()
+study_results = runner.run_experimental_study(design_points, experiment_config)
 
-study_results = experimental_runner.run_experimental_study(
+print(f"\n{'='*50}")
+print("✅ EXPERIMENTAL STUDY COMPLETE")
+print(f"{'='*50}")
+print(f"✓ Executed {len(design_points)} design points")
+print(f"✓ Total simulations: {total_runs}")
+
+
+# %% CELL 12: Time Series Data Processing for Warmup Analysis
+print("\n" + "="*50)
+print("TIME SERIES DATA PROCESSING FOR WARMUP ANALYSIS")
+print("="*50)
+
+from delivery_sim.warmup_analysis.time_series_processing import extract_warmup_time_series
+
+print("Processing time series data for warmup detection...")
+
+all_time_series_data = extract_warmup_time_series(
+    study_results=study_results,
     design_points=design_points,
-    experiment_config=experiment_config
+    metrics=['active_drivers', 'available_drivers', 'unassigned_delivery_entities'],
+    moving_average_window=100
 )
 
-print("\n" + "="*80)
-print("EXPERIMENTAL RUNS COMPLETE")
-print("="*80)
-print(f"✓ Successfully completed {len(study_results)} design points")
-print(f"✓ Results stored in 'study_results'")
+print(f"✓ Time series processing complete for {len(all_time_series_data)} design points")
+print(f"✓ Metrics extracted: active_drivers, available_drivers, unassigned_delivery_entities")
+print(f"✓ Ready for warmup analysis visualization")
 
 
-# %% CELL 12: Save Raw Results
-import pickle
-from datetime import datetime
+# %% CELL 13: Warmup Analysis Visualization
+print("\n" + "="*50)
+print("WARMUP ANALYSIS VISUALIZATION")
+print("="*50)
 
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-results_filename = f"delivery_area_size_study_results_{timestamp}.pkl"
+from delivery_sim.warmup_analysis.visualization import WelchMethodVisualization
+import matplotlib.pyplot as plt
 
-with open(results_filename, 'wb') as f:
-    pickle.dump(study_results, f)
+print("Creating warmup analysis plots...")
 
-print(f"✓ Raw results saved to: {results_filename}")
+# Initialize visualization
+viz = WelchMethodVisualization(figsize=(16, 10))
 
-
-# %% CELL 13: Verify Data Collection
-print("\n" + "="*80)
-print("DATA COLLECTION VERIFICATION")
-print("="*80)
-
-for design_name, replication_results in study_results.items():
-    print(f"\n{design_name}:")
-    print(f"  • Number of replications: {len(replication_results)}")
+# Group design points by delivery area size for organized display
+area_groups = {}
+for design_name in all_time_series_data.keys():
+    # Extract area from design name (e.g., "area_5_seed42_ratio_5.0_no_pairing")
+    parts = design_name.split('_')
+    area_str = parts[1]  # "5", "10", or "15"
+    area = int(area_str)
     
-    for rep_idx, rep_result in enumerate(replication_results):
-        repositories = rep_result['repositories']
-        order_repo = repositories['order']
-        driver_repo = repositories['driver']
-        
-        num_orders = len([o for o in order_repo.find_all()])
-        num_drivers = len([d for d in driver_repo.find_all()])
-        
-        print(f"    Rep {rep_idx}: {num_orders} orders, {num_drivers} drivers")
+    if area not in area_groups:
+        area_groups[area] = []
+    area_groups[area].append(design_name)
 
-print("\n" + "="*80)
-print("✓ Data collection verified for all design points")
-print("="*80)
+print(f"✓ Grouped {len(all_time_series_data)} design points by {len(area_groups)} delivery area sizes")
+
+# Create plots systematically by delivery area size
+plot_count = 0
+for area in sorted(area_groups.keys()):
+    print(f"\nDelivery Area Size {area}×{area} km:")
+    
+    for design_name in sorted(area_groups[area]):
+        plot_title = f"Warmup Analysis: {design_name}"
+        time_series_data = all_time_series_data[design_name]
+        fig = viz.create_warmup_analysis_plot(time_series_data, title=plot_title)
+        
+        plt.show()
+        print(f"    ✓ {design_name} plot displayed")
+        plot_count += 1
+
+print(f"\n✓ Warmup analysis visualization complete")
+print(f"✓ Created {plot_count} warmup analysis plots")
+print(f"✓ Organized by {len(area_groups)} delivery area sizes")
 
 
 # %% CELL 14: Warmup Period Detection
