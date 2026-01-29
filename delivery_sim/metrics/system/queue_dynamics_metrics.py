@@ -66,6 +66,46 @@ def calculate_unassigned_entities_growth_rate(analysis_data):
     }
 
 
+def calculate_average_unassigned_entities(analysis_data):
+    """
+    Calculate average (mean) number of unassigned delivery entities over the post-warmup period.
+    
+    This metric provides a simple measure of queue size over time:
+    - Low average: System handles load well
+    - High average: Chronic queue buildup (even if stable)
+    
+    Complements growth_rate:
+    - growth_rate ≈ 0, low average: healthy system
+    - growth_rate ≈ 0, high average: stable but congested
+    - growth_rate > 0: deteriorating (average less meaningful)
+    
+    Args:
+        analysis_data: AnalysisData object with post_warmup_snapshots
+        
+    Returns:
+        dict: Contains average_queue_size and supporting metadata
+    """
+    snapshots = analysis_data.post_warmup_snapshots
+    
+    # Handle edge case of no data
+    if len(snapshots) == 0:
+        return {
+            'average_queue_size': 0.0,
+            'n_snapshots': 0
+        }
+    
+    # Extract unassigned entities time series
+    unassigned_series = [s['unassigned_delivery_entities'] for s in snapshots]
+    
+    # Calculate average
+    average_queue_size = sum(unassigned_series) / len(unassigned_series)
+    
+    return {
+        'average_queue_size': average_queue_size,
+        'n_snapshots': len(snapshots)
+    }
+
+
 def calculate_all_queue_dynamics_metrics(analysis_data):
     """
     Calculate all queue dynamics metrics for a replication.
@@ -80,9 +120,11 @@ def calculate_all_queue_dynamics_metrics(analysis_data):
         dict: All queue dynamics metrics as scalars
     """
     growth_result = calculate_unassigned_entities_growth_rate(analysis_data)
+    average_result = calculate_average_unassigned_entities(analysis_data)
     
     # Return only the scalar metrics for pipeline aggregation
     # Supporting metadata is available but not needed for results table
     return {
-        'unassigned_entities_growth_rate': growth_result['growth_rate']
+        'unassigned_entities_growth_rate': growth_result['growth_rate'],
+        'average_unassigned_entities': average_result['average_queue_size']
     }
