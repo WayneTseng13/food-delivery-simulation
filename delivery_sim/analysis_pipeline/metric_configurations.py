@@ -181,9 +181,14 @@ METRIC_CONFIGURATIONS = {
                 'metric_name': 'unassigned_entities_growth_rate',
                 'target_statistic': 'mean',
                 'construct_ci': True
+            },
+            {
+                'metric_name': 'average_unassigned_entities',  # NEW METRIC
+                'target_statistic': 'mean',
+                'construct_ci': True
             }
         ],
-        'description': 'Queue dynamics metrics (growth rate, trend analysis)'
+        'description': 'Queue dynamics metrics (growth rate, average queue size, trend analysis)'
     }
 }
 
