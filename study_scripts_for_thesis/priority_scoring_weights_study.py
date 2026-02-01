@@ -1,34 +1,35 @@
-# delivery_area_size_study.py
+# priority_scoring_weights_study.py
 """
-Delivery Area Size Study: Effect of Delivery Area Size on System Performance
+Priority Scoring Weights Strategy Study: Regime-Dependent Weight Optimization
 
-Research Question: How does delivery area size affect food delivery system performance?
+Research Question: How do different priority scoring weight strategies affect 
+system performance across stable and stressed operational regimes?
 
 Building on Previous Studies:
-- Study 1 established three operational regimes based on arrival interval ratio (stable, 
-  critical, failure) and identified the intensity effect (baseline outperforms 2× baseline)
-- Study 2 demonstrated that pairing shifts regime boundaries dramatically (from ~5.5-6.0 
-  to beyond 8.0) and exhibits self-regulating properties
-- Study 3 tested layout robustness across different random seeds, finding that pairing 
-  makes the system robust to spatial variation
-- Study 4 found that restaurant count has minimal impact on system performance (0-15% 
-  customer benefit), with effects visible primarily when pairing is disabled
+- Study 1 established operational regimes based on arrival interval ratio (no pairing)
+- Study 2 demonstrated pairing shifts regime boundaries dramatically (~60% improvement)
+- Study 3 tested layout robustness across random seeds
+- Study 4 found restaurant count has minimal impact (0-15%)
+- Study 5 revealed area size as dominant infrastructure constraint (19-213× degradation)
+- Study 6 validated 40% threshold proportion as optimal across area scales
 
-This Study (Study 5):
-- Tests whether delivery area size affects system performance
-- Unlike restaurant count (which primarily affects driver→restaurant leg), area size 
-  affects the entire logistics journey - every distance component scales with area
-- Investigates interaction between area size and pairing mechanism
-- Examines whether area effects are substantially larger than count effects due to 
-  system-wide impact
+This Study (Study 7):
+- Tests how priority scoring weight strategies perform in different operational regimes
+- Uses empirically-established regime contexts from Studies 5-6:
+  - 10×10 km at ratio 7.0: Stable regime (queue ~8, growth ~0.0015)
+  - 15×15 km at ratio 7.0: Stressed regime (queue ~55, growth ~0.027)
+- Investigates distance-throughput tradeoff within efficiency focus
+- Tests whether fairness consideration is viable across regimes
+- Determines optimal weight strategy for different operational contexts
 
 Design Pattern:
-- 3 delivery area sizes (5×5, 10×10, 15×15 km) with fixed restaurant count (10)
+- 2 delivery area sizes (10×10, 15×15 km) representing stable vs stressed regimes
+- 4 weight strategies: efficiency_default, throughput_focused, distance_focused, fairness_consideration
+- Fixed pairing thresholds: 40% of area dimension (Study 6's optimal proportion)
+- Fixed arrival interval ratio (7.0) and restaurant count (10)
 - Single structural seed (42) for focused analysis
-- 2 arrival interval ratios (5.0, 7.0) sampling critical and high-stress regimes
-- 2 pairing conditions (OFF, ON) to test area × pairing interaction
 
-Total Design Points: 3 areas × 2 ratios × 2 pairing conditions = 12
+Total Design Points: 2 areas × 4 weight strategies = 8
 """
 
 # %% CELL 1: Enable Autoreload
@@ -53,10 +54,9 @@ from delivery_sim.experimental.experimental_runner import ExperimentalRunner
 from delivery_sim.utils.logging_system import configure_logging
 
 print("="*80)
-print("DELIVERY AREA SIZE STUDY")
+print("PRIORITY SCORING WEIGHTS STRATEGY STUDY")
 print("="*80)
-print("Research Question: How does delivery area size affect system performance?")
-print("Building on Studies 1-4: Testing infrastructure factor while controlling for count")
+print("Research Question: How do weight strategies perform across operational regimes?")
 
 # %% CELL 3: Logging Configuration
 logging_config = LoggingConfig(
@@ -77,142 +77,66 @@ print("✓ Logging configured")
 
 # %% CELL 3.5: Research Question
 """
-Document research question and its evolution.
+Document your research question and its evolution.
 """
 
 research_question = """
-PRIMARY RESEARCH QUESTION:
-How does delivery area size affect food delivery system performance?
+RESEARCH QUESTION:
+How do different priority scoring weight strategies affect system performance 
+across stable and stressed operational regimes?
 """
 
 context = """
-CONTEXT & MOTIVATION:
+CONTEXT FROM PREVIOUS STUDIES:
 
-Study 4 revealed that restaurant count has minimal impact on system performance. 
-Tripling restaurant count (5→15) in fixed area produced only 0-15% customer 
-benefit, with effects visible primarily when pairing is disabled. The nearest-
-restaurant effect (7-13% first contact time reduction) is real but affects only 
-one leg of the logistics journey.
+Study 1: Established arrival interval ratio as primary regime determinant (no pairing)
+Study 2: Showed pairing shifts regime boundaries dramatically (~60% improvement)
+Study 3: Tested layout robustness across random seeds
+Study 4: Found restaurant count has minimal impact (0-15%)
+Study 5: Demonstrated delivery area as dominant infrastructure constraint
+Study 6: Validated 40% threshold proportion as optimal across area scales
 
-This study tests a complementary infrastructure factor: delivery area size. Unlike 
-restaurant count, which primarily affects the initial driver→restaurant leg, area 
-size affects the entire logistics journey - every distance component scales with 
-area. This system-wide impact suggests area effects may be substantially larger 
-than count effects.
+Studies 5-6 established clear regime differentiation at ratio 7.0:
+- 10×10 km: Stable regime (avg queue ~8, growth ~0.0015)
+- 15×15 km: Stressed regime (avg queue ~55, growth ~0.027)
 
-Studies 1-4 established that infrastructure factors (layout, count) are third-order 
-compared to operational factors (ratio, pairing). However, all prior studies used 
-fixed 10×10 km area. Does this conclusion hold when area varies? Or does area 
-emerge as a more significant infrastructure factor?
-
-Platform operators face practical questions: How large can service areas grow 
-before performance degrades unacceptably? Does pairing remain effective at larger 
-scales? Understanding area effects is essential for expansion planning.
+Current default scoring weights: (0.5 distance, 0.5 throughput, 0.0 fairness)
+This default creates "level playing field" between pairs and singles.
 """
 
 sub_questions = """
 SUB-QUESTIONS:
 
-1. How does area size affect performance across different metrics?
-   - Travel time components (first contact, pickup, delivery)
-   - Assignment time (queueing + matching)
-   - Fulfillment time (customer experience)
-   - Do all components degrade proportionally, or do some amplify more?
+1. Is the current default (0.5, 0.5, 0.0) already optimal?
+   - Or should the distance-throughput balance be adjusted?
 
-2. Does the area effect interact with system load?
-   - Is area more impactful at ratio 5.0 (critical) vs 7.0 (high stress)?
-   - Does larger area push system into failure at ratios that were stable in 10×10?
-   - Or does area effect remain constant across load levels?
+2. Does optimal strategy differ between stable and stressed regimes?
+   - Can stable regime afford different priorities than stressed regime?
 
-3. Does the area effect interact with pairing?
-   - Does pairing remain effective in larger areas?
-   - Does pairing rate decline as orders become more spatially dispersed?
-   - Can pairing compensate for area-induced performance degradation?
-   - Or does area overwhelm pairing's capacity-doubling benefit?
+3. Is moderate fairness consideration (0.2) viable?
+   - Hypothesis: Viable in stable, costly in stressed
 
-4. How does area size affect spatial efficiency?
-   - Does typical distance scale with √(area) as geometry suggests?
-   - Does larger area interact with restaurant layout in unexpected ways?
-   - Are there path dependency effects (drivers farther from next assignment)?
-
-5. Does the feedback loop amplify area effects?
-   - Study 4 showed 13% first contact improvement → 28% assignment improvement (2.5× amplification)
-   - Does area degradation amplify similarly through driver availability feedback?
-   - Or do larger areas break the feedback loop entirely?
-
-6. What is the magnitude of area effects compared to other factors?
-   - Study 4: Count effects were 0-15% (third-order factor)
-   - Study 2: Pairing effects were ~60% (first-order factor)
-   - Where do area effects fall in this hierarchy?
+4. What's the distance-throughput tradeoff?
+   - Does throughput focus improve capacity utilization?
+   - Does distance focus hurt system throughput?
 """
 
 scope = """
-SCOPE & BOUNDARIES:
-
-Tested:
-- Area sizes: 5×5, 10×10, 15×15 km (9× range from compact to sprawling)
-- Fixed restaurant count: 10 (controls for count effect, isolates area effect)
-- Single seed: 42 (controls for layout variation, tests main effect)
-- Ratios: 5.0 (critical), 7.0 (high stress) - where effects likely detectable
-- Pairing: OFF and ON (tests interaction)
-- Fixed pairing thresholds: δ_r = 4.0 km, δ_c = 3.0 km (tests how fixed policies scale)
-
-Note on density:
-- Varying area with fixed count implicitly varies density
-- 5×5, n=10: 0.40 restaurants/km² (very dense)
-- 10×10, n=10: 0.10 restaurants/km² (baseline)
-- 15×15, n=10: 0.044 restaurants/km² (sparse)
-- After Study 5, can analyze whether density or area is fundamental
-
-Not tested:
-- Different restaurant counts (Study 4 addressed this)
-- Different area-count combinations (factorial design left for future)
-- Scaled pairing thresholds (tests fixed policy across scales)
-- Multiple seeds (robustness check if area effects are significant)
-- Full ratio range (stable regime unlikely to show large effects)
+SCOPE:
+- 2 delivery areas: 10×10 km (stable regime), 15×15 km (stressed regime)
+- 4 weight strategies: efficiency spectrum + fairness consideration
+- Fixed pairing: ON with 40% threshold proportion (scaled to area)
+- Fixed ratio: 7.0 (regime differentiation via area)
+- Single seed: 42 (focused main effect analysis)
 """
 
 analysis_focus = """
-KEY METRICS & ANALYSIS FOCUS:
-
-1. Travel time decomposition (critical for understanding area effects)
-   - First contact time: driver → first restaurant
-   - Pickup travel: complete restaurant pickup phase
-   - Delivery travel: restaurant → customer phase
-   - Total travel time: sum of all components
-   → Hypothesis: All components should scale with area, but by how much?
-
-2. Assignment time (tests feedback loop amplification)
-   - Does area affect assignment through driver cycle feedback?
-   - Or is assignment time independent of area when ratio is controlled?
-   → Study 4 showed 2.5× amplification - does area show similar dynamics?
-
-3. Fulfillment time (customer experience)
-   - Net effect of travel + assignment changes
-   - How much does area degrade customer experience?
-   - Compare magnitude to Study 4's count effects (0-15%)
-
-4. Growth rate (system stability)
-   - Does larger area push system into unbounded growth?
-   - What ratios are sustainable in each area size?
-   - Can pairing rescue stability in large areas?
-
-5. Pairing effectiveness metrics
-   - Pairing rate: Does dispersion reduce pairing opportunities?
-   - Inter-restaurant distances in pairs
-   - Does fixed 4km threshold become increasingly restrictive?
-
-6. Infrastructure characteristics
-   - Typical distance: Does it scale with √(area)?
-   - Deviations indicate path dependency or layout interactions
-
-Analysis Approach:
-- Primary: Main effect of area (compare 5×5 vs 10×10 vs 15×15)
-- Secondary: Area × ratio interaction (does effect vary by load?)
-- Tertiary: Area × pairing interaction (does pairing compensate?)
-- Mechanism: Component-level metrics showing where area effects manifest
-- Context: Compare magnitude to Studies 1, 2, 4 (factor hierarchy)
-- Explanation: Develop mechanistic explanations based on observed patterns
+ANALYSIS FOCUS:
+1. Performance comparison across weight strategies within each regime
+2. Regime-dependent optimal weight identification
+3. Distance-throughput tradeoff within efficiency focus
+4. Fairness consideration viability assessment
+5. Robustness of current default across regimes
 """
 
 evolution_notes = """
@@ -220,36 +144,29 @@ STUDY SEQUENCE POSITIONING:
 
 Study 1: Arrival Interval Ratio Study (COMPLETE)
 - Established regime structure and ratio as primary determinant
-- Limitation: Single infrastructure configuration (10×10, n=10, seed=42)
 
 Study 2: Pairing Effect Study (COMPLETE)
 - Demonstrated pairing shifts regime boundary dramatically (~60% improvement)
-- Limitation: Single infrastructure configuration
 
 Study 3: Infrastructure Layout Study (COMPLETE)
 - Tested layout robustness across random seeds
 - Found pairing makes system robust to spatial variation
-- Limitation: Fixed area (10×10) and count (10)
 
 Study 4: Restaurant Count Study (COMPLETE)
 - Tested count effect: minimal impact (0-15%)
-- Identified nearest-restaurant effect (universal) vs layout efficiency (stochastic)
-- Revealed seed × count interaction determining layout quality
 - Established count as third-order factor
-- Limitation: Fixed area (10×10), single seed (42)
 
-Study 5: Delivery Area Size Study (THIS STUDY)
-- Tests infrastructure factor: delivery area size
-- Uses single seed (42) and fixed count (10) for focused main effect analysis
-- Investigates area × pairing interaction
-- Compares magnitude to count effects
-- Key question: Is area a third-order factor like count, or does it emerge 
-  as more significant due to system-wide impact?
+Study 5: Delivery Area Size Study (COMPLETE)
+- Identified area size as dominant infrastructure constraint (19-213× degradation)
 
-Future Studies:
-- Study 6: Operational policy refinement (pairing thresholds sensitivity)
-- Study 7: Priority scoring weights strategy
-- Potential: Area × count interaction study (is density the fundamental parameter?)
+Study 6: Pairing Thresholds Study (COMPLETE)
+- Validated 40% threshold proportion as optimal
+- Established regime differentiation at ratio 7.0 via area size
+
+Study 7: Priority Scoring Weights Strategy Study (THIS STUDY)
+- Tests weight strategies in empirically-established regimes
+- Investigates distance-throughput-fairness tradeoffs
+- Provides operational guidance for weight selection
 """
 
 print(research_question)
@@ -270,62 +187,55 @@ print("="*80)
 
 # %% CELL 4: Infrastructure Configuration(s)
 """
-INFRASTRUCTURE STUDY: Vary delivery area size while holding restaurant count constant.
+PRIORITY SCORING WEIGHTS STUDY: Test weight strategies at stable and stressed regimes.
 
-Test 3 levels of delivery area size while holding restaurant count at 10.
-This isolates the effect of delivery area size from restaurant count effects.
+Test 2 delivery area sizes while holding restaurant count constant at 10.
+These area sizes represent empirically-established operational regimes from Studies 5-6.
 """
 
-infrastructure_configs = [
-    {
-        'name': 'area_5',
-        'config': StructuralConfig(
-            delivery_area_size=5,
-            num_restaurants=10,
-            driver_speed=0.5
-        ),
-        'area_size': 5
-    },
-    {
-        'name': 'area_10',
-        'config': StructuralConfig(
-            delivery_area_size=10,
-            num_restaurants=10,
-            driver_speed=0.5
-        ),
-        'area_size': 10
-    },
-    {
-        'name': 'area_15',
-        'config': StructuralConfig(
-            delivery_area_size=15,
-            num_restaurants=10,
-            driver_speed=0.5
-        ),
-        'area_size': 15
-    }
-]
+# Define infrastructure configurations
+infrastructure_configs = []
+
+# Stable regime context: 10×10 km
+infrastructure_configs.append({
+    'name': 'area_10',
+    'config': StructuralConfig(
+        delivery_area_size=10,
+        num_restaurants=10,
+        driver_speed=0.5
+    ),
+    'area_size': 10
+})
+
+# Stressed regime context: 15×15 km  
+infrastructure_configs.append({
+    'name': 'area_15',
+    'config': StructuralConfig(
+        delivery_area_size=15,
+        num_restaurants=10,
+        driver_speed=0.5
+    ),
+    'area_size': 15
+})
 
 print(f"✓ Defined {len(infrastructure_configs)} infrastructure configuration(s)")
 for config in infrastructure_configs:
-    struct_config = config['config']
-    density = struct_config.num_restaurants / (struct_config.delivery_area_size ** 2)
-    print(f"  • {config['name']}: area={struct_config.delivery_area_size}×{struct_config.delivery_area_size}km, "
-          f"{struct_config.num_restaurants} restaurants, density={density:.4f}/km²")
+    area_size = config['area_size']
+    regime = 'stable' if area_size == 10 else 'stressed'
+    print(f"  • {config['name']}: {area_size}×{area_size} km ({regime} regime)")
 
 
-# %% CELL 5: Structural Seeds
+# %% CELL 5: Structural Seed Selection
 """
-FOCUSED STUDY: Single seed for main effect analysis.
+Single seed approach for focused main effect analysis.
 
 Using seed 42 (baseline from previous studies) to test primary research question.
-If area effects are significant, robustness across seeds can be tested in follow-up.
 """
 
 structural_seeds = [42]
 
 print(f"✓ Structural seeds: {structural_seeds}")
-print(f"✓ Single seed approach: Focus on main effect of delivery area size")
+print(f"✓ Single seed approach: Focus on main effect of weight strategies")
 
 
 # %% CELL 6: Create Infrastructure Instances
@@ -427,48 +337,87 @@ print(f"{'='*50}")
 
 # %% CELL 7: Scoring Configuration(s)
 """
-Single baseline scoring configuration for this study.
+PRIORITY SCORING WEIGHTS STUDY: Test different weight strategies.
+
+Four weight strategies to test:
+1. efficiency_default (0.5, 0.5, 0.0): Current system default
+2. throughput_focused (0.3, 0.7, 0.0): Prioritize capacity/pairing
+3. distance_focused (0.7, 0.3, 0.0): Prioritize geographic efficiency
+4. fairness_consideration (0.4, 0.4, 0.2): Moderate fairness incorporation
 """
 
 scoring_configs = [
     {
-        'name': 'baseline',
-        'config': ScoringConfig()  # Use defaults
-    }
+        'name': 'efficiency_default',
+        'config': ScoringConfig(
+            weight_distance=0.5,
+            weight_throughput=0.5,
+            weight_fairness=0.0
+        )
+    },
+    {
+        'name': 'throughput_focused',
+        'config': ScoringConfig(
+            weight_distance=0.3,
+            weight_throughput=0.7,
+            weight_fairness=0.0
+        )
+    },
+    {
+        'name': 'distance_focused',
+        'config': ScoringConfig(
+            weight_distance=0.7,
+            weight_throughput=0.3,
+            weight_fairness=0.0
+        )
+    },
+    {
+        'name': 'fairness_consideration',
+        'config': ScoringConfig(
+            weight_distance=0.4,
+            weight_throughput=0.4,
+            weight_fairness=0.2
+        )
+    },
 ]
 
 print(f"\n✓ Defined {len(scoring_configs)} scoring configuration(s)")
 for config in scoring_configs:
-    print(f"  • {config['name']}")
+    sc = config['config']
+    print(f"  • {config['name']}: "
+          f"distance={sc.weight_distance:.1f}, "
+          f"throughput={sc.weight_throughput:.1f}, "
+          f"fairness={sc.weight_fairness:.1f}")
 
 
 # %% CELL 8: Operational Configuration(s)
 """
-DELIVERY AREA SIZE STUDY: Test each area at stressed ratios with/without pairing.
+PRIORITY SCORING WEIGHTS STUDY: Test weight strategies at high stress ratio with optimal thresholds.
 
 Design:
-- 2 arrival interval ratios: 5.0 (critical), 7.0 (high stress)
-- 2 pairing conditions: OFF (control) and ON (intervention)
-- Baseline intensity only: order_interval = 1.0 min
+- 1 arrival interval ratio: 7.0 (high stress - regime differentiation via area)
+- 1 threshold proportion: 40% (optimal from Study 6)
+  - Proportion defines δ_r as fraction of area dimension
+  - δ_c maintains 3:4 ratio with δ_r
+- Pairing always enabled
+- Baseline intensity only: mean_order_inter_arrival_time = 1.0 min
 
-This creates 4 operational configurations per delivery area size.
+Threshold calculation:
+- δ_r = 0.40 × area_size
+- δ_c = 0.75 × δ_r
+
+For 10×10 km: δ_r = 4.0 km, δ_c = 3.0 km
+For 15×15 km: δ_r = 6.0 km, δ_c = 4.5 km
+
+This creates 1 operational configuration per delivery area size.
+Weight strategies will be varied via scoring configurations.
 """
 
-# Target ratios focused on stressed regimes
-target_arrival_interval_ratios = [5.0, 7.0]
+# Target ratio (single value for focused study)
+target_ratio = 7.0
 
-# Pairing configurations
-pairing_params = {
-    'pairing_enabled': True,
-    'restaurants_proximity_threshold': 4.0,
-    'customers_proximity_threshold': 3.0,
-}
-
-no_pairing_params = {
-    'pairing_enabled': False,
-    'restaurants_proximity_threshold': None,
-    'customers_proximity_threshold': None,
-}
+# Optimal threshold proportion from Study 6
+optimal_proportion = 0.40
 
 # Fixed service duration configuration
 FIXED_SERVICE_CONFIG = {
@@ -481,46 +430,54 @@ FIXED_SERVICE_CONFIG = {
 # Build operational configs
 operational_configs = []
 
-for ratio in target_arrival_interval_ratios:
-    # No pairing configuration (baseline intensity only)
-    operational_configs.append({
-        'name': f'ratio_{ratio:.1f}_no_pairing',
-        'config': OperationalConfig(
-            mean_order_inter_arrival_time=1.0,
-            mean_driver_inter_arrival_time=ratio,
-            **no_pairing_params,
-            **FIXED_SERVICE_CONFIG
-        )
-    })
+for infra_instance in infrastructure_instances:
+    area_size = infra_instance['area_size']
     
-    # With pairing configuration (baseline intensity only)
+    # Calculate thresholds based on optimal proportion
+    delta_r = optimal_proportion * area_size
+    delta_c = 0.75 * delta_r  # Maintain 3:4 ratio
+    
+    # Pairing parameters with calculated thresholds
+    pairing_params = {
+        'pairing_enabled': True,
+        'restaurants_proximity_threshold': delta_r,
+        'customers_proximity_threshold': delta_c,
+    }
+    
+    config_name = f"{infra_instance['config_name']}_ratio_{target_ratio:.1f}"
+    
     operational_configs.append({
-        'name': f'ratio_{ratio:.1f}_pairing',
+        'name': config_name,
         'config': OperationalConfig(
             mean_order_inter_arrival_time=1.0,
-            mean_driver_inter_arrival_time=ratio,
+            mean_driver_inter_arrival_time=target_ratio,
             **pairing_params,
             **FIXED_SERVICE_CONFIG
-        )
+        ),
+        'area_size': area_size,
+        'delta_r': delta_r,
+        'delta_c': delta_c
     })
 
-print(f"✓ Defined {len(operational_configs)} operational configurations")
-print(f"✓ Testing {len(target_arrival_interval_ratios)} arrival interval ratios: {target_arrival_interval_ratios}")
-print(f"✓ Each ratio has 2 pairing conditions (OFF, ON)")
+print(f"\n✓ Defined {len(operational_configs)} operational configuration(s)")
+print(f"✓ Testing ratio: {target_ratio}")
+print(f"✓ Using optimal threshold proportion: {optimal_proportion} (40%)")
 
 print("\nConfiguration breakdown:")
 for config in operational_configs:
     op_config = config['config']
     ratio = op_config.mean_driver_inter_arrival_time / op_config.mean_order_inter_arrival_time
-    pairing_status = "PAIRING ON" if op_config.pairing_enabled else "PAIRING OFF"
-    print(f"  • {config['name']}: ratio={ratio:.1f}, {pairing_status}")
+    regime = 'stable' if config['area_size'] == 10 else 'stressed'
+    print(f"  • {config['name']}: ratio={ratio:.1f}, {regime} regime, "
+          f"δ_r={config['delta_r']:.2f}km, δ_c={config['delta_c']:.2f}km")
 
 
 # %% CELL 9: Design Point Creation
 """
 Create design points from all combinations.
 
-Total: 3 areas × 4 operational configs = 12 design points
+Pattern: Area (regime) × Weight Strategy
+Total: 2 areas × 4 weight strategies = 8 design points
 """
 
 design_points = {}
@@ -530,14 +487,17 @@ print("DESIGN POINTS CREATION")
 print("="*50)
 
 for infra_instance in infrastructure_instances:
-    for op_config in operational_configs:
+    # Find operational configs for this infrastructure
+    matching_op_configs = [op for op in operational_configs if op['area_size'] == infra_instance['area_size']]
+    
+    for op_config_dict in matching_op_configs:
         for scoring_config_dict in scoring_configs:
             
-            design_name = f"{infra_instance['name']}_{op_config['name']}"
+            design_name = f"{infra_instance['name']}_{op_config_dict['name']}_weight_{scoring_config_dict['name']}"
             
             design_points[design_name] = DesignPoint(
                 infrastructure=infra_instance['infrastructure'],
-                operational_config=op_config['config'],
+                operational_config=op_config_dict['config'],
                 scoring_config=scoring_config_dict['config'],
                 name=design_name
             )
@@ -547,7 +507,7 @@ for infra_instance in infrastructure_instances:
 print(f"\n{'='*50}")
 print(f"✓ Created {len(design_points)} design points")
 print(f"✓ Breakdown: {len(infrastructure_instances)} areas × "
-      f"{len(operational_configs)} operational × {len(scoring_configs)} scoring")
+      f"{len(operational_configs)} operational × {len(scoring_configs)} weight strategies")
 print(f"{'='*50}")
 
 
@@ -562,7 +522,7 @@ experiment_config = ExperimentConfig(
 total_runs = len(design_points) * experiment_config.num_replications
 estimated_time = total_runs * 5
 
-print(f"✓ Experiment configuration:")
+print(f"\n✓ Experiment configuration:")
 print(f"  • Simulation duration: {experiment_config.simulation_duration} minutes")
 print(f"  • Replications per design point: {experiment_config.num_replications}")
 print(f"  • Operational master seed: {experiment_config.operational_master_seed}")
@@ -617,27 +577,27 @@ import matplotlib.pyplot as plt
 
 print("Creating warmup analysis plots...")
 
-# Initialize visualization
 viz = WelchMethodVisualization(figsize=(16, 10))
 
-# Group design points by delivery area size for organized display
+# Group design points by area for organized display
 area_groups = {}
 for design_name in all_time_series_data.keys():
-    # Extract area from design name (e.g., "area_5_seed42_ratio_5.0_no_pairing")
+    # Extract area from design name (e.g., "area_10_seed42_area_10_ratio_7.0_weight_efficiency_default")
     parts = design_name.split('_')
-    area_str = parts[1]  # "5", "10", or "15"
+    area_str = parts[1]  # "10" or "15"
     area = int(area_str)
     
     if area not in area_groups:
         area_groups[area] = []
     area_groups[area].append(design_name)
 
-print(f"✓ Grouped {len(all_time_series_data)} design points by {len(area_groups)} delivery area sizes")
+print(f"✓ Grouped {len(all_time_series_data)} design points by {len(area_groups)} areas")
 
-# Create plots systematically by delivery area size
+# Create plots systematically by area
 plot_count = 0
 for area in sorted(area_groups.keys()):
-    print(f"\nDelivery Area Size {area}×{area} km:")
+    regime = 'stable' if area == 10 else 'stressed'
+    print(f"\nArea {area}×{area} km ({regime} regime):")
     
     for design_name in sorted(area_groups[area]):
         plot_title = f"Warmup Analysis: {design_name}"
@@ -650,20 +610,21 @@ for area in sorted(area_groups.keys()):
 
 print(f"\n✓ Warmup analysis visualization complete")
 print(f"✓ Created {plot_count} warmup analysis plots")
-print(f"✓ Organized by {len(area_groups)} delivery area sizes")
+print(f"✓ Organized by {len(area_groups)} areas (regimes)")
 
 
-# %% CELL 14: Warmup Period Detection
-print("\n" + "="*80)
-print("WARMUP PERIOD DETECTION")
-print("="*80)
+# %% CELL 14: Warmup Period Determination
+print("\n" + "="*50)
+print("WARMUP PERIOD DETERMINATION")
+print("="*50)
 
+# Use consistent warmup period from Studies 5-6
 uniform_warmup_period = 500
 
-print(f"✓ Using uniform warmup period: {uniform_warmup_period} minutes")
-print(f"  (Based on previous studies using same infrastructure configuration)")
-print(f"  • Simulation duration: {experiment_config.simulation_duration} minutes")
-print(f"  • Analysis will use: {experiment_config.simulation_duration - uniform_warmup_period} minutes of post-warmup data")
+print(f"✓ Warmup period set: {uniform_warmup_period} minutes")
+print(f"✓ Based on visual inspection of active drivers oscillation around Little's Law values")
+print(f"✓ Consistent with Studies 5-6 pairing thresholds studies")
+print(f"✓ Analysis window: {experiment_config.simulation_duration - uniform_warmup_period} minutes of post-warmup data")
 
 
 # %% CELL 15: Process Through Analysis Pipeline
@@ -702,28 +663,29 @@ print(f"✓ Results stored in 'design_analysis_results'")
 
 # %% CELL 16: Extract and Present Key Metrics (TABLE FORMAT)
 print("\n" + "="*80)
-print("KEY PERFORMANCE METRICS: DELIVERY AREA SIZE STUDY")
+print("KEY PERFORMANCE METRICS: PRIORITY SCORING WEIGHTS STUDY")
 print("="*80)
 
 import re
 
-def extract_area_ratio_and_pairing(design_name):
-    """Extract area size, ratio, and pairing status from design point name."""
-    # Pattern: area_5_seed42_ratio_5.0_no_pairing or area_5_seed42_ratio_5.0_pairing
-    match = re.match(r'area_(\d+)_seed\d+_ratio_([\d.]+)_(no_pairing|pairing)', design_name)
+def extract_area_ratio_and_weight(design_name):
+    """Extract area size, ratio, and weight strategy from design point name."""
+    # Pattern: area_10_seed42_area_10_ratio_7.0_weight_efficiency_default
+    match = re.match(r'area_(\d+)_seed\d+_area_\d+_ratio_([\d.]+)_weight_(\w+)', design_name)
     if match:
         area_size = int(match.group(1))
         ratio = float(match.group(2))
-        pairing_status = match.group(3)
-        return area_size, ratio, pairing_status
-    else:
-        raise ValueError(f"Could not parse design name: {design_name}")
+        weight_strategy = match.group(3)
+        return area_size, ratio, weight_strategy
+    return None, None, None
 
-# Extract metrics for tabular display
+# Extract comprehensive metrics for table
 metrics_data = []
 
 for design_name, analysis_result in design_analysis_results.items():
-    area_size, ratio, pairing_status = extract_area_ratio_and_pairing(design_name)
+    area_size, ratio, weight_strategy = extract_area_ratio_and_weight(design_name)
+    if area_size is None:
+        continue
     
     stats_with_cis = analysis_result.get('statistics_with_cis', {})
     
@@ -742,35 +704,7 @@ for design_name, analysis_result in design_analysis_results.items():
     mean_of_stds = assignment_time.get('mean_of_stds', {})
     mos_estimate = mean_of_stds.get('point_estimate', 0)
     
-    # Pickup Travel Time Statistics (Mean of Means with CI)
-    pickup_travel_time = order_metrics.get('pickup_travel_time', {})
-    pickup_travel_time_mom = pickup_travel_time.get('mean_of_means', {})
-    pickup_travel_time_estimate = pickup_travel_time_mom.get('point_estimate', 0)
-    pickup_travel_time_ci = pickup_travel_time_mom.get('confidence_interval', [0, 0])
-    pickup_travel_time_ci_width = (pickup_travel_time_ci[1] - pickup_travel_time_ci[0]) / 2 if pickup_travel_time_ci[0] is not None else 0
-    
-    # Delivery Travel Time Statistics (Mean of Means with CI)
-    delivery_travel_time = order_metrics.get('delivery_travel_time', {})
-    delivery_travel_time_mom = delivery_travel_time.get('mean_of_means', {})
-    delivery_travel_time_estimate = delivery_travel_time_mom.get('point_estimate', 0)
-    delivery_travel_time_ci = delivery_travel_time_mom.get('confidence_interval', [0, 0])
-    delivery_travel_time_ci_width = (delivery_travel_time_ci[1] - delivery_travel_time_ci[0]) / 2 if delivery_travel_time_ci[0] is not None else 0
-    
-    # Travel Time Statistics (Mean of Means with CI)
-    travel_time = order_metrics.get('travel_time', {})
-    travel_time_mom = travel_time.get('mean_of_means', {})
-    travel_time_estimate = travel_time_mom.get('point_estimate', 0)
-    travel_time_ci = travel_time_mom.get('confidence_interval', [0, 0])
-    travel_time_ci_width = (travel_time_ci[1] - travel_time_ci[0]) / 2 if travel_time_ci[0] is not None else 0
-    
-    # Fulfillment Time Statistics (Mean of Means with CI)
-    fulfillment_time = order_metrics.get('fulfillment_time', {})
-    fulfillment_time_mom = fulfillment_time.get('mean_of_means', {})
-    fulfillment_time_estimate = fulfillment_time_mom.get('point_estimate', 0)
-    fulfillment_time_ci = fulfillment_time_mom.get('confidence_interval', [0, 0])
-    fulfillment_time_ci_width = (fulfillment_time_ci[1] - fulfillment_time_ci[0]) / 2 if fulfillment_time_ci[0] is not None else 0
-    
-    # First Contact Time Statistics (Mean of Means with CI) - from delivery_unit_metrics
+    # First Contact Time Statistics
     delivery_unit_metrics = stats_with_cis.get('delivery_unit_metrics', {})
     first_contact_time = delivery_unit_metrics.get('first_contact_time', {})
     first_contact_time_mom = first_contact_time.get('mean_of_means', {})
@@ -778,35 +712,59 @@ for design_name, analysis_result in design_analysis_results.items():
     first_contact_time_ci = first_contact_time_mom.get('confidence_interval', [0, 0])
     first_contact_time_ci_width = (first_contact_time_ci[1] - first_contact_time_ci[0]) / 2 if first_contact_time_ci[0] is not None else 0
     
-    # Queue Dynamics Metrics
-    queue_dynamics_metrics = stats_with_cis.get('queue_dynamics_metrics', {})
+    # Pickup Travel Time Statistics
+    pickup_travel_time = order_metrics.get('pickup_travel_time', {})
+    pickup_travel_time_mom = pickup_travel_time.get('mean_of_means', {})
+    pickup_travel_time_estimate = pickup_travel_time_mom.get('point_estimate', 0)
+    pickup_travel_time_ci = pickup_travel_time_mom.get('confidence_interval', [0, 0])
+    pickup_travel_time_ci_width = (pickup_travel_time_ci[1] - pickup_travel_time_ci[0]) / 2 if pickup_travel_time_ci[0] is not None else 0
+    
+    # Delivery Travel Time Statistics
+    delivery_travel_time = order_metrics.get('delivery_travel_time', {})
+    delivery_travel_time_mom = delivery_travel_time.get('mean_of_means', {})
+    delivery_travel_time_estimate = delivery_travel_time_mom.get('point_estimate', 0)
+    delivery_travel_time_ci = delivery_travel_time_mom.get('confidence_interval', [0, 0])
+    delivery_travel_time_ci_width = (delivery_travel_time_ci[1] - delivery_travel_time_ci[0]) / 2 if delivery_travel_time_ci[0] is not None else 0
+    
+    # Travel Time Statistics (Total)
+    travel_time = order_metrics.get('travel_time', {})
+    travel_time_mom = travel_time.get('mean_of_means', {})
+    travel_time_estimate = travel_time_mom.get('point_estimate', 0)
+    travel_time_ci = travel_time_mom.get('confidence_interval', [0, 0])
+    travel_time_ci_width = (travel_time_ci[1] - travel_time_ci[0]) / 2 if travel_time_ci[0] is not None else 0
+    
+    # Fulfillment Time Statistics
+    fulfillment_time = order_metrics.get('fulfillment_time', {})
+    fulfillment_time_mom = fulfillment_time.get('mean_of_means', {})
+    fulfillment_time_estimate = fulfillment_time_mom.get('point_estimate', 0)
+    fulfillment_time_ci = fulfillment_time_mom.get('confidence_interval', [0, 0])
+    fulfillment_time_ci_width = (fulfillment_time_ci[1] - fulfillment_time_ci[0]) / 2 if fulfillment_time_ci[0] is not None else 0
+    
+    # System Metrics
+    system_metrics = stats_with_cis.get('system_metrics', {})
     
     # Growth Rate
-    growth_rate = queue_dynamics_metrics.get('unassigned_entities_growth_rate', {})
+    growth_rate = system_metrics.get('growth_rate', {})
     growth_rate_estimate = growth_rate.get('point_estimate', 0)
     growth_rate_ci = growth_rate.get('confidence_interval', [0, 0])
     growth_rate_ci_width = (growth_rate_ci[1] - growth_rate_ci[0]) / 2 if growth_rate_ci[0] is not None else 0
     
-    # Average Queue Size (NEW METRIC)
-    avg_queue = queue_dynamics_metrics.get('average_unassigned_entities', {})
+    # Average Queue Size
+    avg_queue = system_metrics.get('average_queue_size', {})
     avg_queue_estimate = avg_queue.get('point_estimate', 0)
     avg_queue_ci = avg_queue.get('confidence_interval', [0, 0])
     avg_queue_ci_width = (avg_queue_ci[1] - avg_queue_ci[0]) / 2 if avg_queue_ci[0] is not None else 0
     
-    # Pairing Rate (only for pairing=ON)
-    system_metrics = stats_with_cis.get('system_metrics', {})
-    pairing_rate_data = system_metrics.get('system_pairing_rate', {})
-    pairing_rate_estimate = pairing_rate_data.get('point_estimate', None)
-    pairing_rate_ci = pairing_rate_data.get('confidence_interval', [None, None])
-    if pairing_rate_ci[0] is not None and pairing_rate_ci[1] is not None:
-        pairing_rate_ci_width = (pairing_rate_ci[1] - pairing_rate_ci[0]) / 2
-    else:
-        pairing_rate_ci_width = None
+    # Pairing Rate
+    pairing_rate = system_metrics.get('system_pairing_rate', {})
+    pairing_rate_estimate = pairing_rate.get('point_estimate', None)
+    pairing_rate_ci = pairing_rate.get('confidence_interval', [None, None])
+    pairing_rate_ci_width = (pairing_rate_ci[1] - pairing_rate_ci[0]) / 2 if pairing_rate_ci[0] is not None else None
     
     metrics_data.append({
         'area_size': area_size,
         'ratio': ratio,
-        'pairing_status': pairing_status,
+        'weight_strategy': weight_strategy,
         'mom_estimate': mom_estimate,
         'mom_ci_width': mom_ci_width,
         'som_estimate': som_estimate,
@@ -821,22 +779,28 @@ for design_name, analysis_result in design_analysis_results.items():
         'travel_time_ci_width': travel_time_ci_width,
         'fulfillment_time_estimate': fulfillment_time_estimate,
         'fulfillment_time_ci_width': fulfillment_time_ci_width,
-        'avg_queue_estimate': avg_queue_estimate,  # NEW
-        'avg_queue_ci_width': avg_queue_ci_width,  # NEW
         'growth_rate_estimate': growth_rate_estimate,
         'growth_rate_ci_width': growth_rate_ci_width,
+        'avg_queue_estimate': avg_queue_estimate,
+        'avg_queue_ci_width': avg_queue_ci_width,
         'pairing_rate_estimate': pairing_rate_estimate,
         'pairing_rate_ci_width': pairing_rate_ci_width
     })
 
-# Sort by area_size, then ratio, then pairing
-metrics_data.sort(key=lambda x: (x['area_size'], x['ratio'], x['pairing_status']))
+# Sort by area size, then weight strategy
+strategy_order = {
+    'efficiency_default': 0,
+    'throughput_focused': 1,
+    'distance_focused': 2,
+    'fairness_consideration': 3
+}
+metrics_data.sort(key=lambda x: (x['area_size'], strategy_order.get(x['weight_strategy'], 99)))
 
 # Display table grouped by area size
 print("\n🎯 PRIMARY VIEW: GROUPED BY DELIVERY AREA SIZE")
 print("="*280)
-print(f"  {'Area':<6} {'Ratio':<6} {'Pairing':<12} │ {'Mean of Means':>18} {'Std of':>10} {'Mean of':>10} │ {'First Contact':>18} │ {'Pickup':>18} │ {'Delivery':>18} │ {'Travel Time':>18} │ {'Fulfillment':>18} │ {'Avg Queue':>18} │ {'Growth Rate':>22} │ {'Pairing Rate':>18}")
-print(f"  {'(km²)':<6} {'':6} {'Status':12} │ {'(Assign Time)':>18} {'Means':>10} {'Stds':>10} │ {'Time':>18} │ {'Travel':>18} │ {'Travel':>18} │ {'(Total)':>18} │ {'Time':>18} │ {'Size':>18} │ {'(entities/min)':>22} │ {'(% paired)':>18}")
+print(f"  {'Area':<6} {'Ratio':<6} {'Weight':<25} │ {'Mean of Means':>18} {'Std of':>10} {'Mean of':>10} │ {'First Contact':>18} │ {'Pickup':>18} │ {'Delivery':>18} │ {'Travel Time':>18} │ {'Fulfillment':>18} │ {'Avg Queue':>18} │ {'Growth Rate':>22} │ {'Pairing Rate':>18}")
+print(f"  {'(km²)':<6} {'':6} {'Strategy':25} │ {'(Assign Time)':>18} {'Means':>10} {'Stds':>10} │ {'Time':>18} │ {'Travel':>18} │ {'Travel':>18} │ {'(Total)':>18} │ {'Time':>18} │ {'Size':>18} │ {'(entities/min)':>22} │ {'(% paired)':>18}")
 print("="*280)
 
 current_area = None
@@ -847,7 +811,6 @@ for row in metrics_data:
     current_area = row['area_size']
     
     # Format metrics
-    pairing_display = "ON" if row['pairing_status'] == 'pairing' else "OFF"
     mom_str = f"{row['mom_estimate']:6.2f} ± {row['mom_ci_width']:5.2f}"
     som_str = f"{row['som_estimate']:6.2f}"
     mos_str = f"{row['mos_estimate']:6.2f}"
@@ -856,7 +819,7 @@ for row in metrics_data:
     delivery_str = f"{row['delivery_travel_time_estimate']:6.2f} ± {row['delivery_travel_time_ci_width']:5.2f}"
     travel_str = f"{row['travel_time_estimate']:6.2f} ± {row['travel_time_ci_width']:5.2f}"
     fulfill_str = f"{row['fulfillment_time_estimate']:6.2f} ± {row['fulfillment_time_ci_width']:5.2f}"
-    avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:5.2f}"  # NEW
+    avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:5.2f}"
     growth_str = f"{row['growth_rate_estimate']:7.4f} ± {row['growth_rate_ci_width']:6.4f}"
     
     if row['pairing_rate_estimate'] is not None:
@@ -866,11 +829,13 @@ for row in metrics_data:
     else:
         pairing_str = "N/A"
     
-    print(f"  {row['area_size']:>4}   {row['ratio']:>4.1f}   {pairing_display:<12} │ {mom_str:>18s} {som_str:>10s} {mos_str:>10s} │ {first_contact_str:>18s} │ {pickup_str:>18s} │ {delivery_str:>18s} │ {travel_str:>18s} │ {fulfill_str:>18s} │ {avg_queue_str:>18s} │ {growth_str:>22s} │ {pairing_str:>18s}")
+    # Format weight strategy name
+    weight_display = row['weight_strategy'].replace('_', ' ').title()
+    
+    print(f"  {row['area_size']:>4}   {row['ratio']:>4.1f}   {weight_display:<25} │ {mom_str:>18s} {som_str:>10s} {mos_str:>10s} │ {first_contact_str:>18s} │ {pickup_str:>18s} │ {delivery_str:>18s} │ {travel_str:>18s} │ {fulfill_str:>18s} │ {avg_queue_str:>18s} │ {growth_str:>22s} │ {pairing_str:>18s}")
 
 print("="*280)
 
 print("\n✓ Metric extraction complete")
-print("✓ Results table includes average queue size")
-
+print("✓ Results table includes all comprehensive metrics")
 # %%
