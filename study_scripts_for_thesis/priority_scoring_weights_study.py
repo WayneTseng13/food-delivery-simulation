@@ -740,22 +740,23 @@ for design_name, analysis_result in design_analysis_results.items():
     fulfillment_time_ci = fulfillment_time_mom.get('confidence_interval', [0, 0])
     fulfillment_time_ci_width = (fulfillment_time_ci[1] - fulfillment_time_ci[0]) / 2 if fulfillment_time_ci[0] is not None else 0
     
-    # System Metrics
-    system_metrics = stats_with_cis.get('system_metrics', {})
+    # Queue Dynamics Metrics
+    queue_dynamics_metrics = stats_with_cis.get('queue_dynamics_metrics', {})
     
     # Growth Rate
-    growth_rate = system_metrics.get('growth_rate', {})
+    growth_rate = queue_dynamics_metrics.get('unassigned_entities_growth_rate', {})
     growth_rate_estimate = growth_rate.get('point_estimate', 0)
     growth_rate_ci = growth_rate.get('confidence_interval', [0, 0])
     growth_rate_ci_width = (growth_rate_ci[1] - growth_rate_ci[0]) / 2 if growth_rate_ci[0] is not None else 0
     
     # Average Queue Size
-    avg_queue = system_metrics.get('average_queue_size', {})
+    avg_queue = queue_dynamics_metrics.get('average_unassigned_entities', {})
     avg_queue_estimate = avg_queue.get('point_estimate', 0)
     avg_queue_ci = avg_queue.get('confidence_interval', [0, 0])
     avg_queue_ci_width = (avg_queue_ci[1] - avg_queue_ci[0]) / 2 if avg_queue_ci[0] is not None else 0
     
     # Pairing Rate
+    system_metrics = stats_with_cis.get('system_metrics', {})
     pairing_rate = system_metrics.get('system_pairing_rate', {})
     pairing_rate_estimate = pairing_rate.get('point_estimate', None)
     pairing_rate_ci = pairing_rate.get('confidence_interval', [None, None])
