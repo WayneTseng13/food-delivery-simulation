@@ -80,59 +80,11 @@ print("="*80)
 # MAIN RESEARCH QUESTION
 # ==============================================================================
 research_question = """
-Are system operational regimes determined solely by arrival interval ratio,
-or do they also depend on the absolute scale of arrival rates?
-
-Test: For each target ratio, create paired configurations with identical 
-ratios but different absolute scales (baseline vs 2× baseline intervals).
-If ratio alone determines behavior, pairs should show same qualitative 
-patterns but different absolute performance.
+(1) How does varying the arrival interval ratio affect system performance? 
+By fixing order arrival intensity while varying driver arrival intensity, we systematically explore the transition from supply surplus to supply deficit conditions.
+(2) Does absolute arrival intensity affect system performance beyond the arrival interval ratio? 
+For a given ratio (relative supply-demand balance), does the absolute scale of operations independently influence system behavior?
 """
-
-# ==============================================================================
-# CONTEXT & MOTIVATION
-# ==============================================================================
-context = """
-This study evolved from broader exploration of supply-demand interactions.
-
-Initial exploration (undocumented iterations):
-1. Started with: "How does supply-demand balance affect performance?"
-2. Tried varying both arrival rates independently → hard to interpret
-3. Realized ratio might be key → fixed order arrival, varied driver arrival
-4. Observed distinct operational regimes emerging at different ratios
-5. Generated hypothesis: ratio determines regime → need to test scale invariance
-
-Observed operational regimes (based on assignment time patterns):
-- Stable regime (low ratios): Near-zero assignment time, minimal variation
-- Volatile regime (medium ratios): Increasing assignment time, high variability  
-- Failure regime (high ratios ~6.5+): System breakdown, queue unbounded growth
-
-This mature experimental design is the product of that hidden evolution.
-"""
-
-# ==============================================================================
-# SUB-QUESTIONS & HYPOTHESES
-# ==============================================================================
-sub_questions = """
-Scale invariance hypothesis predicts:
-
-1. Same regime classification
-   - If baseline is stable, 2× baseline should be stable
-   - If baseline is volatile, 2× baseline should be volatile
-   - Regime boundaries should occur at same ratio values
-
-2. Similar relative variability
-   - Coefficient of variation should match across scales
-   - Pattern of increasing variability should be parallel
-
-3. Proportional absolute performance
-   - 2× baseline should show roughly 2× higher assignment times
-   - But same qualitative behavior (stable/volatile/failure)
-
-Falsification: If baseline and 2× baseline fall into different regimes
-or show qualitatively different patterns, then ratio alone is insufficient.
-"""
-
 # ==============================================================================
 # SCOPE & BOUNDARIES
 # ==============================================================================
@@ -151,75 +103,6 @@ Varied factors:
 
 Systematic validation design: 10 ratios × 2 scales = 20 design points
 """
-
-# ==============================================================================
-# KEY METRICS & ANALYSIS FOCUS
-# ==============================================================================
-analysis_focus = """
-Primary metrics for testing scale invariance:
-
-1. Assignment time (order_metrics)
-   - Mean of means: Absolute performance comparison
-   - Standard deviation of means: Between-replication variability
-   - Mean of stds: Within-replication variability
-   - Coefficient of variation: Normalized comparison across scales
-
-2. Completion rate (system_metrics)
-   - System stability indicator
-   - Regime boundary marker (failure when < 0.95)
-
-3. Time series patterns (visual)
-   - Regime classification: stable/volatile/failure
-   - Pattern similarity between baseline and 2× baseline
-
-Analysis approach:
-- For each ratio: Compare baseline vs 2× baseline
-- Check regime consistency (qualitative behavior match)
-- Compare CVs (relative variability match)
-- Measure scale effects (proportionality of absolute values)
-"""
-
-# ==============================================================================
-# EVOLUTION NOTES
-# ==============================================================================
-evolution_notes = """
-Study maturity: This is a mature experimental design, product of prior 
-undocumented iterations.
-
-The specific research question emerged through:
-1. Broad exploration → identified ratio as key parameter
-2. Pattern observation → discovered regime transitions
-3. Hypothesis generation → scale invariance needs testing
-4. Systematic design → paired validation configurations
-
-Note: This cell documents the final state through reconstruction.
-Future studies will document evolution in real-time as research progresses.
-"""
-
-print(research_question)
-print("\n" + "-"*80)
-print("CONTEXT & MOTIVATION")
-print("-"*80)
-print(context)
-print("\n" + "-"*80)
-print("SUB-QUESTIONS & HYPOTHESES")
-print("-"*80)
-print(sub_questions)
-print("\n" + "-"*80)
-print("SCOPE & BOUNDARIES")
-print("-"*80)
-print(scope)
-print("\n" + "-"*80)
-print("KEY METRICS & ANALYSIS FOCUS")
-print("-"*80)
-print(analysis_focus)
-print("\n" + "-"*80)
-print("EVOLUTION NOTES")
-print("-"*80)
-print(evolution_notes)
-print("\n" + "="*80)
-print("✓ Research question documented - reference this to guide analysis decisions")
-print("="*80)
 
 
 # %% CELL 4: Infrastructure Configuration(s)
@@ -576,54 +459,89 @@ import re
 def extract_ratio_and_type(design_name):
     """Extract arrival interval ratio and interval type from design point name."""
     # Pattern: ratio_3.0_baseline or ratio_3.0_2x_baseline
-    match = re.match(r'ratio_([\d.]+)_(baseline|2x_baseline)', design_name)
-    if match:
-        ratio = float(match.group(1))
-        interval_type = match.group(2)
-        return ratio, interval_type
-    return None, None
+    match = re.match(r'ratio_([\d.]+)_(2x_)?baseline', design_name)
+    if not match:
+        raise ValueError(f"Cannot parse design name: {design_name}")
+    
+    ratio = float(match.group(1))
+    interval_type = '2x_baseline' if match.group(2) else 'baseline'
+    
+    return ratio, interval_type
 
-# Extract comprehensive metrics for table
+# =========================================================================
+# EXTRACT METRICS FROM ALL DESIGN POINTS
+# =========================================================================
 metrics_data = []
 
 for design_name, analysis_result in design_analysis_results.items():
     ratio, interval_type = extract_ratio_and_type(design_name)
-    if ratio is None:
-        continue
     
     stats_with_cis = analysis_result.get('statistics_with_cis', {})
     
     # =====================================================================
-    # ASSIGNMENT TIME STATISTICS (nested under order_metrics)
+    # ASSIGNMENT TIME (ORDER METRICS)
     # =====================================================================
     order_metrics = stats_with_cis.get('order_metrics', {})
     assignment_time = order_metrics.get('assignment_time', {})
     
-    # Mean of means with CI
-    mean_of_means = assignment_time.get('mean_of_means', {})
-    mom_estimate = mean_of_means.get('point_estimate', 0)
-    mom_ci = mean_of_means.get('confidence_interval', [0, 0])
+    # Mean of Means
+    mom = assignment_time.get('mean_of_means', {})
+    mom_estimate = mom.get('point_estimate', 0)
+    mom_ci = mom.get('confidence_interval', [0, 0])
     mom_ci_width = (mom_ci[1] - mom_ci[0]) / 2 if mom_ci[0] is not None else 0
     
-    # Std of means
-    std_of_means = assignment_time.get('std_of_means', {})
-    som_estimate = std_of_means.get('point_estimate', 0)
+    # =====================================================================
+    # TRAVEL TIME METRICS (ORDER METRICS)
+    # =====================================================================
+    # Pickup Travel Time
+    pickup_travel_time = order_metrics.get('pickup_travel_time', {})
+    pickup_travel_time_mom = pickup_travel_time.get('mean_of_means', {})
+    pickup_travel_time_estimate = pickup_travel_time_mom.get('point_estimate', 0)
+    pickup_travel_time_ci = pickup_travel_time_mom.get('confidence_interval', [0, 0])
+    pickup_travel_time_ci_width = (pickup_travel_time_ci[1] - pickup_travel_time_ci[0]) / 2 if pickup_travel_time_ci[0] is not None else 0
     
-    # Mean of stds
-    mean_of_stds = assignment_time.get('mean_of_stds', {})
-    mos_estimate = mean_of_stds.get('point_estimate', 0)
+    # Delivery Travel Time
+    delivery_travel_time = order_metrics.get('delivery_travel_time', {})
+    delivery_travel_time_mom = delivery_travel_time.get('mean_of_means', {})
+    delivery_travel_time_estimate = delivery_travel_time_mom.get('point_estimate', 0)
+    delivery_travel_time_ci = delivery_travel_time_mom.get('confidence_interval', [0, 0])
+    delivery_travel_time_ci_width = (delivery_travel_time_ci[1] - delivery_travel_time_ci[0]) / 2 if delivery_travel_time_ci[0] is not None else 0
+    
+    # Fulfillment Time
+    fulfillment_time = order_metrics.get('fulfillment_time', {})
+    fulfillment_time_mom = fulfillment_time.get('mean_of_means', {})
+    fulfillment_time_estimate = fulfillment_time_mom.get('point_estimate', 0)
+    fulfillment_time_ci = fulfillment_time_mom.get('confidence_interval', [0, 0])
+    fulfillment_time_ci_width = (fulfillment_time_ci[1] - fulfillment_time_ci[0]) / 2 if fulfillment_time_ci[0] is not None else 0
     
     # =====================================================================
     # QUEUE DYNAMICS METRICS
     # =====================================================================
-    
-    # Growth Rate (from queue_dynamics_metrics)
     queue_dynamics_metrics = stats_with_cis.get('queue_dynamics_metrics', {})
-    growth_rate_metric = queue_dynamics_metrics.get('unassigned_entities_growth_rate', {})
     
+    # Growth Rate
+    growth_rate_metric = queue_dynamics_metrics.get('unassigned_entities_growth_rate', {})
     growth_rate_estimate = growth_rate_metric.get('point_estimate', 0)
     growth_rate_ci = growth_rate_metric.get('confidence_interval', [0, 0])
     growth_rate_ci_width = (growth_rate_ci[1] - growth_rate_ci[0]) / 2 if growth_rate_ci[0] is not None else 0
+    
+    # Average Queue Size
+    avg_queue = queue_dynamics_metrics.get('average_unassigned_entities', {})
+    avg_queue_estimate = avg_queue.get('point_estimate', 0)
+    avg_queue_ci = avg_queue.get('confidence_interval', [0, 0])
+    avg_queue_ci_width = (avg_queue_ci[1] - avg_queue_ci[0]) / 2 if avg_queue_ci[0] is not None else 0
+    
+    # =====================================================================
+    # SYSTEM STATE METRICS
+    # =====================================================================
+    system_state_metrics = stats_with_cis.get('system_state_metrics', {})
+    
+    # Driver Utilization
+    driver_utilization = system_state_metrics.get('driver_utilization', {})
+    driver_utilization_mom = driver_utilization.get('mean_of_means', {})
+    driver_utilization_estimate = driver_utilization_mom.get('point_estimate', 0)
+    driver_utilization_ci = driver_utilization_mom.get('confidence_interval', [0, 0])
+    driver_utilization_ci_width = (driver_utilization_ci[1] - driver_utilization_ci[0]) / 2 if driver_utilization_ci[0] is not None else 0
     
     # =====================================================================
     # BUILD ROW
@@ -634,11 +552,21 @@ for design_name, analysis_result in design_analysis_results.items():
         # Assignment time
         'mom_estimate': mom_estimate,
         'mom_ci_width': mom_ci_width,
-        'som_estimate': som_estimate,
-        'mos_estimate': mos_estimate,
+        # Travel time metrics
+        'pickup_travel_time_estimate': pickup_travel_time_estimate,
+        'pickup_travel_time_ci_width': pickup_travel_time_ci_width,
+        'delivery_travel_time_estimate': delivery_travel_time_estimate,
+        'delivery_travel_time_ci_width': delivery_travel_time_ci_width,
+        'fulfillment_time_estimate': fulfillment_time_estimate,
+        'fulfillment_time_ci_width': fulfillment_time_ci_width,
         # Queue dynamics
+        'avg_queue_estimate': avg_queue_estimate,
+        'avg_queue_ci_width': avg_queue_ci_width,
         'growth_rate_estimate': growth_rate_estimate,
         'growth_rate_ci_width': growth_rate_ci_width,
+        # System state
+        'driver_utilization_estimate': driver_utilization_estimate,
+        'driver_utilization_ci_width': driver_utilization_ci_width,
     })
 
 # Sort by ratio then interval type
@@ -647,90 +575,77 @@ metrics_data.sort(key=lambda x: (x['ratio'], x['interval_type']))
 # =========================================================================
 # PRINT FORMATTED TABLE
 # =========================================================================
-print("\n🎯 KEY PERFORMANCE METRICS: ASSIGNMENT TIME & QUEUE DYNAMICS")
-print("="*120)
-print(" Ratio    Interval        Mean of Means     Std of    Mean of      Growth Rate")
-print("              Type    (Assignment Time)      Means       Stds     (entities/min)")
-print("="*120)
+print("\n🎯 KEY PERFORMANCE METRICS: ASSIGNMENT TIME, TRAVEL METRICS & QUEUE DYNAMICS")
+print("="*200)
+print(" Ratio    Interval        Assignment Time      Pickup Travel      Delivery Travel      Fulfillment Time      Avg Queue Size      Growth Rate         Driver Utilization")
+print("              Type           (mean ± CI)          (mean ± CI)         (mean ± CI)          (mean ± CI)          (mean ± CI)     (entities/min)            (mean ± CI)")
+print("="*200)
 
 for row in metrics_data:
     ratio = row['ratio']
     interval_display = "2x Baseline" if row['interval_type'] == '2x_baseline' else "Baseline"
     
-    # Assignment time: mean ± CI_width
-    mom_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
-    som_str = f"{row['som_estimate']:5.2f}"
-    mos_str = f"{row['mos_estimate']:5.2f}"
-    
-    # Growth Rate: value ± CI_width
+    # Format all metrics: mean ± CI_width
+    assignment_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
+    pickup_str = f"{row['pickup_travel_time_estimate']:5.2f} ± {row['pickup_travel_time_ci_width']:5.2f}"
+    delivery_str = f"{row['delivery_travel_time_estimate']:5.2f} ± {row['delivery_travel_time_ci_width']:5.2f}"
+    fulfillment_str = f"{row['fulfillment_time_estimate']:6.2f} ± {row['fulfillment_time_ci_width']:6.2f}"
+    avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:6.2f}"
     growth_rate_str = f"{row['growth_rate_estimate']:7.4f} ± {row['growth_rate_ci_width']:7.4f}"
+    driver_util_str = f"{row['driver_utilization_estimate']:5.4f} ± {row['driver_utilization_ci_width']:5.4f}"
     
-    print(f"  {ratio:3.1f}  {interval_display:12s}     {mom_str:>16s}    {som_str:>7s}    {mos_str:>7s}    {growth_rate_str:>21s}")
+    print(f"  {ratio:3.1f}  {interval_display:12s}     {assignment_str:>16s}    {pickup_str:>16s}    {delivery_str:>18s}    {fulfillment_str:>18s}    {avg_queue_str:>18s}    {growth_rate_str:>21s}    {driver_util_str:>20s}")
 
-print("="*120)
+print("="*200)
 
 # =========================================================================
 # ALTERNATIVE VIEW GROUPED BY INTERVAL TYPE
 # =========================================================================
 print("\n\n🎯 ALTERNATIVE VIEW: GROUPED BY INTERVAL TYPE")
-print("="*120)
-print(" Ratio    Interval        Mean of Means     Std of    Mean of      Growth Rate")
-print("              Type    (Assignment Time)      Means       Stds     (entities/min)")
-print("="*120)
+print("="*200)
+print(" Ratio    Interval        Assignment Time      Pickup Travel      Delivery Travel      Fulfillment Time      Avg Queue Size      Growth Rate         Driver Utilization")
+print("              Type           (mean ± CI)          (mean ± CI)         (mean ± CI)          (mean ± CI)          (mean ± CI)     (entities/min)            (mean ± CI)")
+print("="*200)
 
 # Group by interval type
 print("2x BASELINE CONFIGURATIONS:")
-print("-"*120)
+print("-"*200)
 baseline_2x_data = [d for d in metrics_data if d['interval_type'] == '2x_baseline']
 for row in baseline_2x_data:
     ratio = row['ratio']
     interval_display = "2x Baseline"
     
-    mom_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
-    som_str = f"{row['som_estimate']:5.2f}"
-    mos_str = f"{row['mos_estimate']:5.2f}"
+    assignment_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
+    pickup_str = f"{row['pickup_travel_time_estimate']:5.2f} ± {row['pickup_travel_time_ci_width']:5.2f}"
+    delivery_str = f"{row['delivery_travel_time_estimate']:5.2f} ± {row['delivery_travel_time_ci_width']:5.2f}"
+    fulfillment_str = f"{row['fulfillment_time_estimate']:6.2f} ± {row['fulfillment_time_ci_width']:6.2f}"
+    avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:6.2f}"
     growth_rate_str = f"{row['growth_rate_estimate']:7.4f} ± {row['growth_rate_ci_width']:7.4f}"
+    driver_util_str = f"{row['driver_utilization_estimate']:5.4f} ± {row['driver_utilization_ci_width']:5.4f}"
     
-    print(f"  {ratio:3.1f}  {interval_display:12s}     {mom_str:>16s}    {som_str:>7s}    {mos_str:>7s}    {growth_rate_str:>21s}")
+    print(f"  {ratio:3.1f}  {interval_display:12s}     {assignment_str:>16s}    {pickup_str:>16s}    {delivery_str:>18s}    {fulfillment_str:>18s}    {avg_queue_str:>18s}    {growth_rate_str:>21s}    {driver_util_str:>20s}")
 
 print("\nBASELINE CONFIGURATIONS:")
-print("-"*120)
+print("-"*200)
 baseline_data = [d for d in metrics_data if d['interval_type'] == 'baseline']
 for row in baseline_data:
     ratio = row['ratio']
     interval_display = "Baseline"
     
-    mom_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
-    som_str = f"{row['som_estimate']:5.2f}"
-    mos_str = f"{row['mos_estimate']:5.2f}"
+    assignment_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
+    pickup_str = f"{row['pickup_travel_time_estimate']:5.2f} ± {row['pickup_travel_time_ci_width']:5.2f}"
+    delivery_str = f"{row['delivery_travel_time_estimate']:5.2f} ± {row['delivery_travel_time_ci_width']:5.2f}"
+    fulfillment_str = f"{row['fulfillment_time_estimate']:6.2f} ± {row['fulfillment_time_ci_width']:6.2f}"
+    avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:6.2f}"
     growth_rate_str = f"{row['growth_rate_estimate']:7.4f} ± {row['growth_rate_ci_width']:7.4f}"
+    driver_util_str = f"{row['driver_utilization_estimate']:5.4f} ± {row['driver_utilization_ci_width']:5.4f}"
     
-    print(f"  {ratio:3.1f}  {interval_display:12s}     {mom_str:>16s}    {som_str:>7s}    {mos_str:>7s}    {growth_rate_str:>21s}")
+    print(f"  {ratio:3.1f}  {interval_display:12s}     {assignment_str:>16s}    {pickup_str:>16s}    {delivery_str:>18s}    {fulfillment_str:>18s}    {avg_queue_str:>18s}    {growth_rate_str:>21s}    {driver_util_str:>20s}")
 
-print("="*120)
-
-# =========================================================================
-# INTERPRETATION GUIDE
-# =========================================================================
-print("\n📊 METRIC INTERPRETATION GUIDE:")
-print("-"*80)
-print("ASSIGNMENT TIME METRICS:")
-print("  • Mean of Means: Average customer wait time (with 95% CI)")
-print("  • Std of Means: System consistency across replications")
-print("  • Mean of Stds: Within-replication volatility")
-print()
-print("QUEUE DYNAMICS METRIC:")
-print("  • Growth Rate: System trajectory (≈0 = bounded, >0 = deteriorating)")
-print()
-print("REGIME SIGNATURES:")
-print("  • Stable (ratio ≤4.0):        Low assignment time, growth ≈0")
-print("  • Oscillatory (ratio 4.5-5.5): Moderate assignment time, growth ≈0")
-print("  • Deteriorating (ratio ≥6.0):  High assignment time, growth >0")
-print("="*80)
+print("="*200)
 
 print("\n✓ Metric extraction complete")
-print("✓ Growth rate retained as primary queue dynamics indicator")
-
+print("✓ Displaying 7 key metrics: Assignment Time, Pickup Travel, Delivery Travel, Fulfillment Time, Avg Queue Size, Growth Rate, Driver Utilization")
 # %% CELL 17: Regime-Intensity Hypothesis Visualization
 """
 VISUALIZATION OBJECTIVE: Test the hypothesis that "Arrival interval ratio determines 
