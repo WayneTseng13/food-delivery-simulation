@@ -544,6 +544,17 @@ for design_name, analysis_result in design_analysis_results.items():
     driver_utilization_ci_width = (driver_utilization_ci[1] - driver_utilization_ci[0]) / 2 if driver_utilization_ci[0] is not None else 0
     
     # =====================================================================
+    # SYSTEM METRICS (ONE-LEVEL PATTERN)
+    # =====================================================================
+    system_metrics = stats_with_cis.get('system_metrics', {})
+    
+    # Immediate Assignment Rate
+    immediate_assignment_rate = system_metrics.get('immediate_assignment_rate', {})
+    immediate_assignment_rate_estimate = immediate_assignment_rate.get('point_estimate', 0)
+    immediate_assignment_rate_ci = immediate_assignment_rate.get('confidence_interval', [0, 0])
+    immediate_assignment_rate_ci_width = (immediate_assignment_rate_ci[1] - immediate_assignment_rate_ci[0]) / 2 if immediate_assignment_rate_ci[0] is not None else 0
+    
+    # =====================================================================
     # BUILD ROW
     # =====================================================================
     metrics_data.append({
@@ -567,6 +578,9 @@ for design_name, analysis_result in design_analysis_results.items():
         # System state
         'driver_utilization_estimate': driver_utilization_estimate,
         'driver_utilization_ci_width': driver_utilization_ci_width,
+        # System metrics
+        'immediate_assignment_rate_estimate': immediate_assignment_rate_estimate,
+        'immediate_assignment_rate_ci_width': immediate_assignment_rate_ci_width,
     })
 
 # Sort by ratio then interval type
@@ -576,10 +590,10 @@ metrics_data.sort(key=lambda x: (x['ratio'], x['interval_type']))
 # PRINT FORMATTED TABLE
 # =========================================================================
 print("\n🎯 KEY PERFORMANCE METRICS: ASSIGNMENT TIME, TRAVEL METRICS & QUEUE DYNAMICS")
-print("="*200)
-print(" Ratio    Interval        Assignment Time      Pickup Travel      Delivery Travel      Fulfillment Time      Avg Queue Size      Growth Rate         Driver Utilization")
-print("              Type           (mean ± CI)          (mean ± CI)         (mean ± CI)          (mean ± CI)          (mean ± CI)     (entities/min)            (mean ± CI)")
-print("="*200)
+print("="*230)
+print(" Ratio    Interval        Assignment Time      Pickup Travel      Delivery Travel      Fulfillment Time      Avg Queue Size      Growth Rate         Driver Utilization    Immediate Assign Rate")
+print("              Type           (mean ± CI)          (mean ± CI)         (mean ± CI)          (mean ± CI)          (mean ± CI)     (entities/min)            (mean ± CI)             (mean ± CI)")
+print("="*230)
 
 for row in metrics_data:
     ratio = row['ratio']
@@ -593,10 +607,11 @@ for row in metrics_data:
     avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:6.2f}"
     growth_rate_str = f"{row['growth_rate_estimate']:7.4f} ± {row['growth_rate_ci_width']:7.4f}"
     driver_util_str = f"{row['driver_utilization_estimate']:5.4f} ± {row['driver_utilization_ci_width']:5.4f}"
+    immediate_assign_str = f"{row['immediate_assignment_rate_estimate']:5.4f} ± {row['immediate_assignment_rate_ci_width']:5.4f}"
     
-    print(f"  {ratio:3.1f}  {interval_display:12s}     {assignment_str:>16s}    {pickup_str:>16s}    {delivery_str:>18s}    {fulfillment_str:>18s}    {avg_queue_str:>18s}    {growth_rate_str:>21s}    {driver_util_str:>20s}")
+    print(f"  {ratio:3.1f}  {interval_display:12s}     {assignment_str:>16s}    {pickup_str:>16s}    {delivery_str:>18s}    {fulfillment_str:>18s}    {avg_queue_str:>18s}    {growth_rate_str:>21s}    {driver_util_str:>20s}    {immediate_assign_str:>22s}")
 
-print("="*200)
+print("="*230)
 
 # =========================================================================
 # ALTERNATIVE VIEW GROUPED BY INTERVAL TYPE
@@ -645,8 +660,7 @@ for row in baseline_data:
 print("="*200)
 
 print("\n✓ Metric extraction complete")
-print("✓ Displaying 7 key metrics: Assignment Time, Pickup Travel, Delivery Travel, Fulfillment Time, Avg Queue Size, Growth Rate, Driver Utilization")
-# %% CELL 17: Regime-Intensity Hypothesis Visualization
+print("✓ Displaying 7 key metrics: Assignment Time, Pickup Travel, Delivery Travel, Fulfillment Time, Avg Queue Size, Growth Rate, Driver Utilization")# %% CELL 17: Regime-Intensity Hypothesis Visualization
 """
 VISUALIZATION OBJECTIVE: Test the hypothesis that "Arrival interval ratio determines 
 which regime the system is in (qualitative behavior), but absolute intensity determines 
