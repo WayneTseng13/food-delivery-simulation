@@ -64,6 +64,41 @@ def calculate_system_pairing_rate(analysis_data):
         'pairing_rate': pairing_rate
     }
 
+def calculate_immediate_assignment_rate(analysis_data):
+    """
+    Calculate immediate assignment rate as fraction of completed orders with zero assignment time.
+    
+    This metric measures system responsiveness by showing what percentage of 
+    completed orders were assigned to a driver immediately upon arrival (no queueing delay).
+    
+    Uses the unbiased performance sample (cohort_completed_orders) to ensure 
+    the metric reflects typical completed order performance.
+    
+    Args:
+        analysis_data: AnalysisData object containing pre-filtered populations
+        
+    Returns:
+        dict: Contains total_completed, immediate_assignments, and immediate_assignment_rate
+    """
+    # Use completed orders from AnalysisData (unbiased performance sample)
+    completed_orders = analysis_data.cohort_completed_orders
+    
+    total_completed = len(completed_orders)
+    
+    # Count orders with assignment_time == 0
+    immediate_assignments = sum(
+        1 for order in completed_orders 
+        if order.assignment_time == 0
+    )
+    
+    # Calculate rate
+    immediate_assignment_rate = immediate_assignments / total_completed if total_completed > 0 else 0.0
+    
+    return {
+        'total_completed': total_completed,
+        'immediate_assignments': immediate_assignments,
+        'immediate_assignment_rate': immediate_assignment_rate
+    }
 
 def calculate_all_entity_derived_system_metrics(analysis_data):
     """
@@ -83,6 +118,9 @@ def calculate_all_entity_derived_system_metrics(analysis_data):
     # Calculate pairing rate metrics
     pairing_metrics = calculate_system_pairing_rate(analysis_data)
     
+    # Calculate immediate assignment rate metrics
+    immediate_assignment_metrics = calculate_immediate_assignment_rate(analysis_data)
+    
     return {
         # Completion metrics
         'system_completion_rate': completion_metrics['completion_rate'],
@@ -91,5 +129,9 @@ def calculate_all_entity_derived_system_metrics(analysis_data):
         
         # Pairing rate metrics
         'system_pairing_rate': pairing_metrics['pairing_rate'],
-        'total_orders_paired': pairing_metrics['total_paired']
+        'total_orders_paired': pairing_metrics['total_paired'],
+        
+        # Immediate assignment metrics
+        'immediate_assignment_rate': immediate_assignment_metrics['immediate_assignment_rate'],
+        'total_immediate_assignments': immediate_assignment_metrics['immediate_assignments']
     }

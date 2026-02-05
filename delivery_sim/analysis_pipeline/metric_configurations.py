@@ -146,19 +146,22 @@ METRIC_CONFIGURATIONS = {
         'data_key': None,
         'ci_config': [
             {
-                'metric_name': 'system_completion_rate',  # ✅ Changed from 'completion_rate'
+                'metric_name': 'system_completion_rate',
                 'target_statistic': 'mean',
-                'construct_ci': True,
-                'description': 'Mean completion rate with CI'
+                'construct_ci': True
             },
             {
-                'metric_name': 'system_pairing_rate',  # ✅ Changed from 'pairing_rate'
+                'metric_name': 'system_pairing_rate',
                 'target_statistic': 'mean',
-                'construct_ci': True,
-                'description': 'Mean pairing rate with CI'
+                'construct_ci': True
             },
+            {
+                'metric_name': 'immediate_assignment_rate',  # ADD THIS
+                'target_statistic': 'mean',
+                'construct_ci': True
+            }
         ],
-        'description': 'System-wide performance metrics'
+        'description': 'Entity-derived system effectiveness metrics'
     },
     # ==========================================================================
     # ONE-LEVEL PATTERN: QUEUE DYNAMICS METRICS
