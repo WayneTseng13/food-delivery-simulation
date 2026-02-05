@@ -80,15 +80,19 @@ def calculate_immediate_assignment_rate(analysis_data):
     Returns:
         dict: Contains total_completed, immediate_assignments, and immediate_assignment_rate
     """
+    # Import the metric calculation function
+    from delivery_sim.metrics.entity.order_metrics import calculate_order_assignment_time
+    
     # Use completed orders from AnalysisData (unbiased performance sample)
     completed_orders = analysis_data.cohort_completed_orders
     
     total_completed = len(completed_orders)
     
-    # Count orders with assignment_time == 0
+    # Count orders with assignment_time duration == 0
+    # We need to calculate the duration (assignment_time - arrival_time), not use the timestamp
     immediate_assignments = sum(
         1 for order in completed_orders 
-        if order.assignment_time == 0
+        if calculate_order_assignment_time(order) == 0
     )
     
     # Calculate rate

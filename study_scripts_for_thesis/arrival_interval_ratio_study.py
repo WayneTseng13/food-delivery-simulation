@@ -613,54 +613,7 @@ for row in metrics_data:
 
 print("="*230)
 
-# =========================================================================
-# ALTERNATIVE VIEW GROUPED BY INTERVAL TYPE
-# =========================================================================
-print("\n\n🎯 ALTERNATIVE VIEW: GROUPED BY INTERVAL TYPE")
-print("="*200)
-print(" Ratio    Interval        Assignment Time      Pickup Travel      Delivery Travel      Fulfillment Time      Avg Queue Size      Growth Rate         Driver Utilization")
-print("              Type           (mean ± CI)          (mean ± CI)         (mean ± CI)          (mean ± CI)          (mean ± CI)     (entities/min)            (mean ± CI)")
-print("="*200)
-
-# Group by interval type
-print("2x BASELINE CONFIGURATIONS:")
-print("-"*200)
-baseline_2x_data = [d for d in metrics_data if d['interval_type'] == '2x_baseline']
-for row in baseline_2x_data:
-    ratio = row['ratio']
-    interval_display = "2x Baseline"
-    
-    assignment_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
-    pickup_str = f"{row['pickup_travel_time_estimate']:5.2f} ± {row['pickup_travel_time_ci_width']:5.2f}"
-    delivery_str = f"{row['delivery_travel_time_estimate']:5.2f} ± {row['delivery_travel_time_ci_width']:5.2f}"
-    fulfillment_str = f"{row['fulfillment_time_estimate']:6.2f} ± {row['fulfillment_time_ci_width']:6.2f}"
-    avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:6.2f}"
-    growth_rate_str = f"{row['growth_rate_estimate']:7.4f} ± {row['growth_rate_ci_width']:7.4f}"
-    driver_util_str = f"{row['driver_utilization_estimate']:5.4f} ± {row['driver_utilization_ci_width']:5.4f}"
-    
-    print(f"  {ratio:3.1f}  {interval_display:12s}     {assignment_str:>16s}    {pickup_str:>16s}    {delivery_str:>18s}    {fulfillment_str:>18s}    {avg_queue_str:>18s}    {growth_rate_str:>21s}    {driver_util_str:>20s}")
-
-print("\nBASELINE CONFIGURATIONS:")
-print("-"*200)
-baseline_data = [d for d in metrics_data if d['interval_type'] == 'baseline']
-for row in baseline_data:
-    ratio = row['ratio']
-    interval_display = "Baseline"
-    
-    assignment_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
-    pickup_str = f"{row['pickup_travel_time_estimate']:5.2f} ± {row['pickup_travel_time_ci_width']:5.2f}"
-    delivery_str = f"{row['delivery_travel_time_estimate']:5.2f} ± {row['delivery_travel_time_ci_width']:5.2f}"
-    fulfillment_str = f"{row['fulfillment_time_estimate']:6.2f} ± {row['fulfillment_time_ci_width']:6.2f}"
-    avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:6.2f}"
-    growth_rate_str = f"{row['growth_rate_estimate']:7.4f} ± {row['growth_rate_ci_width']:7.4f}"
-    driver_util_str = f"{row['driver_utilization_estimate']:5.4f} ± {row['driver_utilization_ci_width']:5.4f}"
-    
-    print(f"  {ratio:3.1f}  {interval_display:12s}     {assignment_str:>16s}    {pickup_str:>16s}    {delivery_str:>18s}    {fulfillment_str:>18s}    {avg_queue_str:>18s}    {growth_rate_str:>21s}    {driver_util_str:>20s}")
-
-print("="*200)
-
-print("\n✓ Metric extraction complete")
-print("✓ Displaying 7 key metrics: Assignment Time, Pickup Travel, Delivery Travel, Fulfillment Time, Avg Queue Size, Growth Rate, Driver Utilization")# %% CELL 17: Regime-Intensity Hypothesis Visualization
+# %%
 """
 VISUALIZATION OBJECTIVE: Test the hypothesis that "Arrival interval ratio determines 
 which regime the system is in (qualitative behavior), but absolute intensity determines 
