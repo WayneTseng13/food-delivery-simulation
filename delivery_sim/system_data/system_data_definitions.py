@@ -42,7 +42,10 @@ class SystemDataDefinitions:
             
             # Warmup detection and supply-demand dynamics metrics
             'active_drivers': self.count_active_drivers(),
-            'unassigned_delivery_entities': self.count_unassigned_delivery_entities()
+            'unassigned_delivery_entities': self.count_unassigned_delivery_entities(),
+            
+            # Capacity utilization metrics
+            'driver_utilization': self.calculate_driver_utilization()
         }
     
     # ===== System Performance Metrics =====
@@ -62,6 +65,32 @@ class SystemDataDefinitions:
     def count_delivering_drivers(self):
         """Count drivers currently performing deliveries."""
         return len(self.repositories['driver'].find_by_state(DriverState.DELIVERING))
+    
+    def calculate_driver_utilization(self):
+        """
+        Calculate the fraction of active drivers currently performing deliveries.
+        
+        Driver utilization measures capacity efficiency: what fraction of the
+        available workforce is actively working versus idle waiting for assignments.
+        
+        Formula: delivering_drivers / active_drivers
+        
+        This metric is KEY FOR TEMPORAL COORDINATION ANALYSIS as it reveals
+        whether drivers are productively utilized or experiencing idle time due
+        to arrival pattern mismatches. Low utilization despite queue presence
+        indicates temporal coordination inefficiency.
+        
+        Returns:
+            float: Utilization rate [0.0, 1.0], or 0.0 if no active drivers
+        """
+        active_drivers = self.count_active_drivers()
+        delivering_drivers = self.count_delivering_drivers()
+        
+        # Handle edge case: no active drivers in system
+        if active_drivers == 0:
+            return 0.0
+        
+        return delivering_drivers / active_drivers
     
     # ===== Warmup Detection and Supply-Demand Dynamics Metrics =====
     
