@@ -634,37 +634,57 @@ for design_name, analysis_result in design_analysis_results.items():
     mom_ci = mean_of_means.get('confidence_interval', [0, 0])
     mom_ci_width = (mom_ci[1] - mom_ci[0]) / 2 if mom_ci[0] is not None else 0
     
-    # Std of means
-    std_of_means = assignment_time.get('std_of_means', {})
-    som_estimate = std_of_means.get('point_estimate', 0)
-    
-    # Mean of stds
-    mean_of_stds = assignment_time.get('mean_of_stds', {})
-    mos_estimate = mean_of_stds.get('point_estimate', 0)
-    
     # =====================================================================
     # QUEUE DYNAMICS METRICS
     # =====================================================================
     queue_dynamics_metrics = stats_with_cis.get('queue_dynamics_metrics', {})
-    growth_rate_metric = queue_dynamics_metrics.get('unassigned_entities_growth_rate', {})
     
+    # Growth Rate
+    growth_rate_metric = queue_dynamics_metrics.get('unassigned_entities_growth_rate', {})
     growth_rate_estimate = growth_rate_metric.get('point_estimate', 0)
     growth_rate_ci = growth_rate_metric.get('confidence_interval', [0, 0])
     growth_rate_ci_width = (growth_rate_ci[1] - growth_rate_ci[0]) / 2 if growth_rate_ci[0] is not None else 0
     
+    # Average Queue Size
+    avg_queue = queue_dynamics_metrics.get('average_unassigned_entities', {})
+    avg_queue_estimate = avg_queue.get('point_estimate', 0)
+    avg_queue_ci = avg_queue.get('confidence_interval', [0, 0])
+    avg_queue_ci_width = (avg_queue_ci[1] - avg_queue_ci[0]) / 2 if avg_queue_ci[0] is not None else 0
+    
     # =====================================================================
-    # PAIRING RATE (only for pairing=ON configurations)
+    # SYSTEM STATE METRICS
     # =====================================================================
-    pairing_rate_estimate = None
-    pairing_rate_ci_width = None
-    if pairing_condition == 'pairing':
-        system_metrics = stats_with_cis.get('system_metrics', {})
-        pairing_rate_metric = system_metrics.get('system_pairing_rate', {})
-        if pairing_rate_metric:
-            pairing_rate_estimate = pairing_rate_metric.get('point_estimate', None)
-            pairing_rate_ci = pairing_rate_metric.get('confidence_interval', [None, None])
-            if pairing_rate_ci[0] is not None:
-                pairing_rate_ci_width = (pairing_rate_ci[1] - pairing_rate_ci[0]) / 2
+    system_state_metrics = stats_with_cis.get('system_state_metrics', {})
+    
+    # Driver Utilization
+    driver_utilization = system_state_metrics.get('driver_utilization', {})
+    driver_utilization_mom = driver_utilization.get('mean_of_means', {})
+    driver_utilization_estimate = driver_utilization_mom.get('point_estimate', 0)
+    driver_utilization_ci = driver_utilization_mom.get('confidence_interval', [0, 0])
+    driver_utilization_ci_width = (driver_utilization_ci[1] - driver_utilization_ci[0]) / 2 if driver_utilization_ci[0] is not None else 0
+    
+    # =====================================================================
+    # SYSTEM METRICS
+    # =====================================================================
+    system_metrics = stats_with_cis.get('system_metrics', {})
+    
+    # Pairing Rate (only for pairing=ON)
+    pairing_rate_data = system_metrics.get('system_pairing_rate', {})
+    pairing_rate_estimate = pairing_rate_data.get('point_estimate', None)
+    pairing_rate_ci = pairing_rate_data.get('confidence_interval', [None, None])
+    if pairing_rate_ci[0] is not None and pairing_rate_ci[1] is not None:
+        pairing_rate_ci_width = (pairing_rate_ci[1] - pairing_rate_ci[0]) / 2
+    else:
+        pairing_rate_ci_width = None
+    
+    # Immediate Assignment Rate
+    immediate_assignment_rate_data = system_metrics.get('immediate_assignment_rate', {})
+    immediate_assignment_rate_estimate = immediate_assignment_rate_data.get('point_estimate', None)
+    immediate_assignment_rate_ci = immediate_assignment_rate_data.get('confidence_interval', [None, None])
+    if immediate_assignment_rate_ci[0] is not None and immediate_assignment_rate_ci[1] is not None:
+        immediate_assignment_rate_ci_width = (immediate_assignment_rate_ci[1] - immediate_assignment_rate_ci[0]) / 2
+    else:
+        immediate_assignment_rate_ci_width = None
     
     # =====================================================================
     # BUILD ROW
@@ -675,14 +695,19 @@ for design_name, analysis_result in design_analysis_results.items():
         # Assignment time
         'mom_estimate': mom_estimate,
         'mom_ci_width': mom_ci_width,
-        'som_estimate': som_estimate,
-        'mos_estimate': mos_estimate,
         # Queue dynamics
+        'avg_queue_estimate': avg_queue_estimate,
+        'avg_queue_ci_width': avg_queue_ci_width,
         'growth_rate_estimate': growth_rate_estimate,
         'growth_rate_ci_width': growth_rate_ci_width,
-        # Pairing rate
+        # System state
+        'driver_utilization_estimate': driver_utilization_estimate,
+        'driver_utilization_ci_width': driver_utilization_ci_width,
+        # System metrics
         'pairing_rate_estimate': pairing_rate_estimate,
         'pairing_rate_ci_width': pairing_rate_ci_width,
+        'immediate_assignment_rate_estimate': immediate_assignment_rate_estimate,
+        'immediate_assignment_rate_ci_width': immediate_assignment_rate_ci_width,
     })
 
 # Sort by ratio then pairing condition (no_pairing first, then pairing)
@@ -692,33 +717,50 @@ metrics_data.sort(key=lambda x: (x['ratio'], 0 if x['pairing_condition'] == 'no_
 # PRINT FORMATTED TABLE: GROUPED BY PAIRING CONDITION
 # =========================================================================
 print("\n🎯 KEY PERFORMANCE METRICS: GROUPED BY PAIRING CONDITION")
-print("="*130)
-print(" Ratio   Pairing      Mean of Means       Std of    Mean of        Growth Rate              Pairing Rate")
-print("         Status    (Assignment Time)       Means       Stds       (entities/min)              (% paired)")
-print("="*130)
+print("="*195)
+print(" Ratio  Pairing    Assignment Time    Avg Queue Size    Growth Rate       Driver Utilization   Immediate Assign.    Pairing Rate")
+print("        Status       (mean ± CI)        (mean ± CI)    (entities/min)        (mean ± CI)          (mean ± CI)        (mean ± CI)")
+print("="*195)
 
 print("NO PAIRING:")
-print("-"*130)
+print("-"*195)
 for row in metrics_data:
     if row['pairing_condition'] == 'no_pairing':
         ratio = row['ratio']
-        mom_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
-        som_str = f"{row['som_estimate']:5.2f}"
-        mos_str = f"{row['mos_estimate']:5.2f}"
+        assignment_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
+        avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:6.2f}"
         growth_rate_str = f"{row['growth_rate_estimate']:7.4f} ± {row['growth_rate_ci_width']:7.4f}"
+        driver_util_str = f"{row['driver_utilization_estimate']:6.4f} ± {row['driver_utilization_ci_width']:6.4f}"
         
-        print(f"  {ratio:4.1f}    OFF        {mom_str:>16s}      {som_str:>7s}    {mos_str:>7s}      {growth_rate_str:>21s}               N/A")
+        # Immediate assignment rate
+        if row['immediate_assignment_rate_estimate'] is not None and row['immediate_assignment_rate_ci_width'] is not None:
+            imm_assign_str = f"{row['immediate_assignment_rate_estimate']*100:5.2f} ± {row['immediate_assignment_rate_ci_width']*100:5.2f}%"
+        elif row['immediate_assignment_rate_estimate'] is not None:
+            imm_assign_str = f"{row['immediate_assignment_rate_estimate']*100:5.2f}%"
+        else:
+            imm_assign_str = "N/A"
+        
+        print(f"  {ratio:4.1f}   OFF      {assignment_str:>16s}   {avg_queue_str:>17s}   {growth_rate_str:>17s}   {driver_util_str:>18s}   {imm_assign_str:>18s}        N/A")
 
 print("\nPAIRING ENABLED:")
-print("-"*130)
+print("-"*195)
 for row in metrics_data:
     if row['pairing_condition'] == 'pairing':
         ratio = row['ratio']
-        mom_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
-        som_str = f"{row['som_estimate']:5.2f}"
-        mos_str = f"{row['mos_estimate']:5.2f}"
+        assignment_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
+        avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:6.2f}"
         growth_rate_str = f"{row['growth_rate_estimate']:7.4f} ± {row['growth_rate_ci_width']:7.4f}"
+        driver_util_str = f"{row['driver_utilization_estimate']:6.4f} ± {row['driver_utilization_ci_width']:6.4f}"
         
+        # Immediate assignment rate
+        if row['immediate_assignment_rate_estimate'] is not None and row['immediate_assignment_rate_ci_width'] is not None:
+            imm_assign_str = f"{row['immediate_assignment_rate_estimate']*100:5.2f} ± {row['immediate_assignment_rate_ci_width']*100:5.2f}%"
+        elif row['immediate_assignment_rate_estimate'] is not None:
+            imm_assign_str = f"{row['immediate_assignment_rate_estimate']*100:5.2f}%"
+        else:
+            imm_assign_str = "N/A"
+        
+        # Pairing rate
         if row['pairing_rate_estimate'] is not None and row['pairing_rate_ci_width'] is not None:
             pr_str = f"{row['pairing_rate_estimate']*100:5.2f} ± {row['pairing_rate_ci_width']*100:5.2f}%"
         elif row['pairing_rate_estimate'] is not None:
@@ -726,24 +768,25 @@ for row in metrics_data:
         else:
             pr_str = "N/A"
         
-        print(f"  {ratio:4.1f}    ON         {mom_str:>16s}      {som_str:>7s}    {mos_str:>7s}      {growth_rate_str:>21s}      {pr_str:>16s}")
+        print(f"  {ratio:4.1f}   ON       {assignment_str:>16s}   {avg_queue_str:>17s}   {growth_rate_str:>17s}   {driver_util_str:>18s}   {imm_assign_str:>18s}   {pr_str:>16s}")
 
-print("="*130)
+print("="*195)
 
 # =========================================================================
 # INTERPRETATION GUIDE
 # =========================================================================
 print("\n📊 METRIC INTERPRETATION GUIDE:")
 print("-"*80)
-print("ASSIGNMENT TIME METRICS:")
+print("ASSIGNMENT TIME:")
 print("  • Mean of Means: Average customer wait time (with 95% CI)")
-print("  • Std of Means: System consistency across replications")
-print("  • Mean of Stds: Within-replication volatility")
 print()
-print("QUEUE DYNAMICS METRIC:")
+print("QUEUE DYNAMICS METRICS:")
+print("  • Avg Queue Size: Time-weighted mean unassigned entities")
 print("  • Growth Rate: System trajectory (≈0 = bounded, >0 = deteriorating)")
 print()
-print("PAIRING METRIC:")
+print("SYSTEM EFFICIENCY METRICS:")
+print("  • Driver Utilization: Fraction of active drivers in DELIVERING state")
+print("  • Immediate Assign. Rate: % of orders assigned instantly (assignment_time = 0)")
 print("  • Pairing Rate: % of deliveries with paired orders (with 95% CI)")
 print()
 print("REGIME REFERENCE (from Study 1):")
@@ -754,7 +797,8 @@ print()
 print("KEY QUESTIONS TO ANSWER:")
 print("  • Does pairing shift the regime boundary (compare growth rates at 5.5-6.5)?")
 print("  • Where is pairing benefit greatest (compare assignment times across ratios)?")
-print("  • How does pairing rate vary with load?")
+print("  • How do queue size and utilization respond to pairing?")
+print("  • Does pairing improve immediate assignment rates?")
 print("="*80)
 
 print("\n✓ Metric extraction complete")
