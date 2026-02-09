@@ -678,12 +678,34 @@ for design_name, analysis_result in design_analysis_results.items():
     mean_of_stds = assignment_time.get('mean_of_stds', {})
     mos_estimate = mean_of_stds.get('point_estimate', 0)
     
-    # Growth Rate
+    # Pickup Travel Time
+    pickup_travel_time = order_metrics.get('pickup_travel_time', {})
+    pickup_travel_time_mom = pickup_travel_time.get('mean_of_means', {})
+    pickup_travel_time_estimate = pickup_travel_time_mom.get('point_estimate', 0)
+    pickup_travel_time_ci = pickup_travel_time_mom.get('confidence_interval', [0, 0])
+    pickup_travel_time_ci_width = (pickup_travel_time_ci[1] - pickup_travel_time_ci[0]) / 2 if pickup_travel_time_ci[0] is not None else 0
+    
+    # Delivery Travel Time
+    delivery_travel_time = order_metrics.get('delivery_travel_time', {})
+    delivery_travel_time_mom = delivery_travel_time.get('mean_of_means', {})
+    delivery_travel_time_estimate = delivery_travel_time_mom.get('point_estimate', 0)
+    delivery_travel_time_ci = delivery_travel_time_mom.get('confidence_interval', [0, 0])
+    delivery_travel_time_ci_width = (delivery_travel_time_ci[1] - delivery_travel_time_ci[0]) / 2 if delivery_travel_time_ci[0] is not None else 0
+    
+    # Queue Dynamics Metrics
     queue_dynamics_metrics = stats_with_cis.get('queue_dynamics_metrics', {})
+    
+    # Growth Rate
     growth_rate = queue_dynamics_metrics.get('unassigned_entities_growth_rate', {})
     growth_rate_estimate = growth_rate.get('point_estimate', 0)
     growth_rate_ci = growth_rate.get('confidence_interval', [0, 0])
     growth_rate_ci_width = (growth_rate_ci[1] - growth_rate_ci[0]) / 2 if growth_rate_ci[0] is not None else 0
+    
+    # Average Queue Size
+    avg_queue = queue_dynamics_metrics.get('average_unassigned_entities', {})
+    avg_queue_estimate = avg_queue.get('point_estimate', 0)
+    avg_queue_ci = avg_queue.get('confidence_interval', [0, 0])
+    avg_queue_ci_width = (avg_queue_ci[1] - avg_queue_ci[0]) / 2 if avg_queue_ci[0] is not None else 0
     
     # Pairing Rate (only for pairing=ON)
     system_metrics = stats_with_cis.get('system_metrics', {})
@@ -704,6 +726,12 @@ for design_name, analysis_result in design_analysis_results.items():
         'mom_ci_width': mom_ci_width,
         'som_estimate': som_estimate,
         'mos_estimate': mos_estimate,
+        'pickup_travel_time_estimate': pickup_travel_time_estimate,
+        'pickup_travel_time_ci_width': pickup_travel_time_ci_width,
+        'delivery_travel_time_estimate': delivery_travel_time_estimate,
+        'delivery_travel_time_ci_width': delivery_travel_time_ci_width,
+        'avg_queue_estimate': avg_queue_estimate,
+        'avg_queue_ci_width': avg_queue_ci_width,
         'growth_rate_estimate': growth_rate_estimate,
         'growth_rate_ci_width': growth_rate_ci_width,
         'pairing_rate_estimate': pairing_rate_estimate,
@@ -717,67 +745,75 @@ metrics_data.sort(key=lambda x: (x['seed'], x['ratio'], 0 if x['pairing_status']
 # PRINT FORMATTED TABLE: GROUPED BY SEED
 # =========================================================================
 print("\n🎯 KEY PERFORMANCE METRICS: GROUPED BY INFRASTRUCTURE LAYOUT")
-print("="*150)
-print(f"  {'Seed':<6} {'Ratio':<6} {'Pairing':<12} {'Mean of Means':>18} {'Std of':>10} {'Mean of':>10} {'Growth Rate':>22} {'Pairing Rate':>18}")
-print(f"  {'':6} {'':6} {'Status':<12} {'(Assignment Time)':>18} {'Means':>10} {'Stds':>10} {'(entities/min)':>22} {'(% paired)':>18}")
-print("="*150)
+print("="*230)
+print(f"  {'Seed':<6} {'Ratio':<6} {'Pairing':<12} {'Mean of Means':>18} {'Std of':>10} {'Mean of':>10} {'Pickup Travel':>18} {'Delivery Travel':>18} {'Avg Queue Size':>18} {'Growth Rate':>22} {'Pairing Rate':>18}")
+print(f"  {'':6} {'':6} {'Status':<12} {'(Assignment Time)':>18} {'Means':>10} {'Stds':>10} {'(mean ± CI)':>18} {'(mean ± CI)':>18} {'(mean ± CI)':>18} {'(entities/min)':>22} {'(% paired)':>18}")
+print("="*230)
 
 current_seed = None
 for row in metrics_data:
     # Add separator between seeds
     if current_seed is not None and row['seed'] != current_seed:
-        print("-"*150)
+        print("-"*230)
     current_seed = row['seed']
     
     seed = row['seed']
     ratio = row['ratio']
-    pairing_display = "ON" if row['pairing_status'] == 'pairing' else "OFF"
+    pairing_status = row['pairing_status']
+    pairing_display = "Pairing ON" if pairing_status == 'pairing' else "No Pairing"
     
-    mom_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
-    som_str = f"{row['som_estimate']:5.2f}"
-    mos_str = f"{row['mos_estimate']:5.2f}"
+    # Format all metrics: mean ± CI_width
+    assignment_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
+    som_str = f"{row['som_estimate']:6.3f}"
+    mos_str = f"{row['mos_estimate']:6.3f}"
+    pickup_str = f"{row['pickup_travel_time_estimate']:5.2f} ± {row['pickup_travel_time_ci_width']:5.2f}"
+    delivery_str = f"{row['delivery_travel_time_estimate']:5.2f} ± {row['delivery_travel_time_ci_width']:5.2f}"
+    avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:6.2f}"
     growth_rate_str = f"{row['growth_rate_estimate']:7.4f} ± {row['growth_rate_ci_width']:7.4f}"
     
-    if row['pairing_rate_estimate'] is not None and row['pairing_rate_ci_width'] is not None:
-        pr_str = f"{row['pairing_rate_estimate']*100:5.2f} ± {row['pairing_rate_ci_width']*100:5.2f}%"
-    elif row['pairing_rate_estimate'] is not None:
-        pr_str = f"{row['pairing_rate_estimate']*100:5.2f}%"
+    if row['pairing_rate_estimate'] is not None:
+        pairing_rate_str = f"{row['pairing_rate_estimate']*100:5.2f} ± {row['pairing_rate_ci_width']*100:5.2f}"
     else:
-        pr_str = "N/A"
+        pairing_rate_str = "N/A"
     
-    print(f"  {seed:<6} {ratio:<6.1f} {pairing_display:<12} {mom_str:>18} {som_str:>10} {mos_str:>10} {growth_rate_str:>22} {pr_str:>18}")
+    print(f"  {seed:<6} {ratio:<6.1f} {pairing_display:<12} {assignment_str:>18} {som_str:>10} {mos_str:>10} {pickup_str:>18} {delivery_str:>18} {avg_queue_str:>18} {growth_rate_str:>22} {pairing_rate_str:>18}")
 
-print("="*150)
+print("="*230)
 
 # =========================================================================
-# ALTERNATIVE VIEW: GROUPED BY RATIO AND PAIRING
+# ALTERNATIVE VIEW: LAYOUT SENSITIVITY ACROSS SEEDS
 # =========================================================================
-print("\n\n🎯 ALTERNATIVE VIEW: LAYOUT COMPARISON AT EACH RATIO × PAIRING")
+print("\n\n🎯 LAYOUT SENSITIVITY VIEW: ASSIGNMENT TIME ACROSS SEEDS")
 print("="*130)
-print(f"  {'Ratio':<6} {'Pairing':<10} │ {'Seed 42':>20} {'Seed 100':>20} {'Seed 200':>20} │ {'Max Diff':>12}")
-print(f"  {'':6} {'':10} │ {'(Assign Time)':>20} {'(Assign Time)':>20} {'(Assign Time)':>20} │ {'':>12}")
+print("  Compare the same (ratio, pairing) condition across all three seeds to see layout effect")
+print("-"*130)
+print(f"  {'Ratio':<6} {'Pairing':<12} │ {'Seed 42':>20} {'Seed 100':>20} {'Seed 200':>20} │ {'Max Diff':>12}")
+print(f"  {'':6} {'Status':<12} │ {'Assignment Time':>20} {'Assignment Time':>20} {'Assignment Time':>20} │ {'(across seeds)':>12}")
 print("="*130)
 
-for ratio in sorted(set(row['ratio'] for row in metrics_data)):
-    for pairing_status in ['no_pairing', 'pairing']:
-        pairing_display = "ON" if pairing_status == 'pairing' else "OFF"
-        
-        times = {}
-        for seed in [42, 100, 200]:
-            row = next((r for r in metrics_data if r['seed'] == seed and r['ratio'] == ratio and r['pairing_status'] == pairing_status), None)
-            if row:
-                times[seed] = row['mom_estimate']
-        
-        if times:
-            t42 = f"{times.get(42, 0):5.2f}" if 42 in times else "N/A"
-            t100 = f"{times.get(100, 0):5.2f}" if 100 in times else "N/A"
-            t200 = f"{times.get(200, 0):5.2f}" if 200 in times else "N/A"
-            max_diff = max(times.values()) - min(times.values()) if len(times) > 1 else 0
-            diff_str = f"{max_diff:5.2f} min"
-            
-            print(f"  {ratio:<6.1f} {pairing_display:<10} │ {t42:>20} {t100:>20} {t200:>20} │ {diff_str:>12}")
+# Get all unique (ratio, pairing_status) combinations
+conditions = sorted(set((d['ratio'], d['pairing_status']) for d in metrics_data))
+
+for ratio, pairing_status in conditions:
+    pairing_display = "Pairing ON" if pairing_status == 'pairing' else "No Pairing"
     
-    print("-"*130)
+    # Collect assignment times for all seeds
+    times = {}
+    for seed in [42, 100, 200]:
+        row = next((r for r in metrics_data if r['seed'] == seed and r['ratio'] == ratio and r['pairing_status'] == pairing_status), None)
+        if row:
+            times[seed] = row['mom_estimate']
+    
+    if times:
+        t42 = f"{times.get(42, 0):5.2f}" if 42 in times else "N/A"
+        t100 = f"{times.get(100, 0):5.2f}" if 100 in times else "N/A"
+        t200 = f"{times.get(200, 0):5.2f}" if 200 in times else "N/A"
+        max_diff = max(times.values()) - min(times.values()) if len(times) > 1 else 0
+        diff_str = f"{max_diff:5.2f} min"
+        
+        print(f"  {ratio:<6.1f} {pairing_display:<10} │ {t42:>20} {t100:>20} {t200:>20} │ {diff_str:>12}")
+
+print("-"*130)
 
 print("="*130)
 
@@ -791,7 +827,12 @@ print("  • Mean of Means: Average customer wait time (with 95% CI)")
 print("  • Std of Means: System consistency across replications")
 print("  • Mean of Stds: Within-replication volatility")
 print()
-print("QUEUE DYNAMICS METRIC:")
+print("TRAVEL TIME METRICS:")
+print("  • Pickup Travel: Time for driver to reach restaurant (mean ± 95% CI)")
+print("  • Delivery Travel: Time for driver to deliver to customer (mean ± 95% CI)")
+print()
+print("QUEUE DYNAMICS METRICS:")
+print("  • Avg Queue Size: Average number of unassigned entities (mean ± 95% CI)")
 print("  • Growth Rate: System trajectory (≈0 = bounded, >0 = deteriorating)")
 print()
 print("PAIRING METRIC:")
