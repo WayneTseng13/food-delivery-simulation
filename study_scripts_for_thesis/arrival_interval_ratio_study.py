@@ -613,7 +613,7 @@ for row in metrics_data:
 
 print("="*230)
 
-# %%
+# %% AD HOC VISUALIZAYION CELL
 """
 VISUALIZATION OBJECTIVE: Test the hypothesis that "Arrival interval ratio determines 
 which regime the system is in (qualitative behavior), but absolute intensity determines 
@@ -730,5 +730,150 @@ plt.ylim([0, 50])  # Linear scale from 0 to 50 minutes
 plt.tight_layout()
 plt.show()
 
+
+# %% CELL AD HOC: Pooling Mechanism Visualization — Idle Drivers Over Time
+"""
+PURPOSE:
+    Empirically demonstrate the pooling advantage by comparing available
+    (idle) driver counts over time between Baseline and 2× Baseline at
+    ratio 4.5 — the point of largest immediate assignment rate gap (20.6 pp).
+
+FIGURE DESIGN:
+    Two stacked subplots, shared x-axis, same y-scale.
+    Each panel shows one replication's available_drivers trajectory.
+    When the line touches zero, every driver is busy and arriving orders
+    must queue — the critical threshold is the floor itself.
+
+WHY SINGLE REPLICATION:
+    Cross-replication averages mask zero-hitting events because different
+    replications hit zero at different times — averaging pushes the trace
+    above zero even when every individual run regularly touches zero.
+    A single replication preserves the raw signal we want to show.
+
+IMMEDIATE ASSIGNMENT RATE (PER-REP):
+    Computed directly from the chosen replication's order repository,
+    using identical logic to the analysis pipeline:
+      - cohort orders: arrival_time >= warmup
+      - completed orders: delivery_time is not None
+      - immediate assignment: assignment_time - arrival_time == 0
+    This ensures the rate is consistent with the time-at-zero from the
+    same replication, making the cross-check meaningful.
+"""
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+print("=" * 60)
+print("POOLING MECHANISM: IDLE DRIVER TIME SERIES")
+print("=" * 60)
+
+# ── Configuration ────────────────────────────────────────────
+TARGET_RATIO = 4.5
+REP_IDX      = 0        # which replication to plot (0-indexed)
+WARMUP       = 500      # minutes — post-warmup window only
+
+baseline_key    = f"ratio_{TARGET_RATIO:.1f}_baseline"
+baseline_2x_key = f"ratio_{TARGET_RATIO:.1f}_2x_baseline"
+
+# ── Helper: post-warmup snapshots for one replication ────────
+def get_post_warmup_snapshots(design_key, rep_idx, warmup_cutoff):
+    rep_result = study_results[design_key][rep_idx]
+    return [s for s in rep_result['system_snapshots']
+            if s['timestamp'] >= warmup_cutoff]
+
+# ── Helper: per-replication immediate assignment rate ─────────
+def compute_imm_assign_rate(design_key, rep_idx, warmup_cutoff):
+    """
+    Replicates the analysis pipeline logic for a single replication.
+    cohort_completed_orders: arrived post-warmup AND delivered.
+    immediate: assignment_time - arrival_time == 0.
+    """
+    repositories = study_results[design_key][rep_idx]['repositories']
+    orders = repositories['order'].find_all()
+    cohort_completed = [
+        o for o in orders
+        if o.arrival_time >= warmup_cutoff and o.delivery_time is not None
+    ]
+    if not cohort_completed:
+        return None
+    n_immediate = sum(
+        1 for o in cohort_completed
+        if (o.assignment_time - o.arrival_time) == 0
+    )
+    return n_immediate / len(cohort_completed)
+
+# ── Extract data ─────────────────────────────────────────────
+baseline_snaps    = get_post_warmup_snapshots(baseline_key,    REP_IDX, WARMUP)
+baseline_2x_snaps = get_post_warmup_snapshots(baseline_2x_key, REP_IDX, WARMUP)
+
+baseline_times    = [s['timestamp']         for s in baseline_snaps]
+baseline_idle     = [s['available_drivers'] for s in baseline_snaps]
+baseline_2x_times = [s['timestamp']         for s in baseline_2x_snaps]
+baseline_2x_idle  = [s['available_drivers'] for s in baseline_2x_snaps]
+
+# ── Compute fraction of time at zero ─────────────────────────
+frac_zero_base   = sum(1 for v in baseline_idle   if v == 0) / len(baseline_idle)
+frac_zero_base2x = sum(1 for v in baseline_2x_idle if v == 0) / len(baseline_2x_idle)
+
+# ── Per-replication immediate assignment rates ────────────────
+imm_rate_base   = compute_imm_assign_rate(baseline_key,    REP_IDX, WARMUP)
+imm_rate_base2x = compute_imm_assign_rate(baseline_2x_key, REP_IDX, WARMUP)
+
+print(f"\nRatio {TARGET_RATIO} | Replication {REP_IDX + 1}")
+print(f"{'':30s}  {'Baseline':>12}  {'2× Baseline':>12}")
+print(f"  {'Fraction of time idle = 0':30s}  {frac_zero_base:>11.1%}  {frac_zero_base2x:>11.1%}")
+print(f"  {'Immediate assignment rate':30s}  {imm_rate_base:>11.1%}  {imm_rate_base2x:>11.1%}")
+print(f"  {'Expected queue fraction (1 - imm)':30s}  {1-imm_rate_base:>11.1%}  {1-imm_rate_base2x:>11.1%}")
+print(f"\n  (fraction at zero should ≈ 1 - immediate assignment rate via PASTA)")
+
+# ── Shared y-axis upper bound ────────────────────────────────
+y_max = max(max(baseline_idle), max(baseline_2x_idle)) + 1
+
+# ── Plot ─────────────────────────────────────────────────────
+fig, (ax_base, ax_2x) = plt.subplots(
+    2, 1,
+    figsize=(14, 7),
+    sharex=True
+)
+
+fig.suptitle(
+    f"Idle Driver Count Over Time — Ratio {TARGET_RATIO} (Replication {REP_IDX + 1})\n"
+    f"Touching the floor (zero) means all drivers are busy: arriving orders must queue",
+    fontsize=13,
+    fontweight='bold'
+)
+
+# ── Top panel: Baseline ──────────────────────────────────────
+ax_base.plot(baseline_times, baseline_idle, color='#2E86AB', linewidth=0.8, alpha=0.9)
+ax_base.set_ylim(-0.5, y_max)
+ax_base.set_ylabel('Idle Drivers', fontsize=11)
+ax_base.set_title(
+    f"Baseline  |  Time at zero: {frac_zero_base:.1%}  "
+    f"|  Immediate assignment rate (rep {REP_IDX+1}): {imm_rate_base:.1%}",
+    fontsize=10, loc='left'
+)
+ax_base.grid(True, alpha=0.3)
+
+# ── Bottom panel: 2× Baseline ────────────────────────────────
+ax_2x.plot(baseline_2x_times, baseline_2x_idle, color='#A23B72', linewidth=0.8, alpha=0.9)
+ax_2x.set_ylim(-0.5, y_max)
+ax_2x.set_ylabel('Idle Drivers', fontsize=11)
+ax_2x.set_xlabel('Simulation Time (minutes)', fontsize=11)
+ax_2x.set_title(
+    f"2× Baseline  |  Time at zero: {frac_zero_base2x:.1%}  "
+    f"|  Immediate assignment rate (rep {REP_IDX+1}): {imm_rate_base2x:.1%}",
+    fontsize=10, loc='left'
+)
+ax_2x.grid(True, alpha=0.3)
+
+# ── Fix x-axis to start exactly at warmup boundary ───────────
+ax_2x.set_xlim(left=WARMUP)
+
+plt.tight_layout()
+plt.show()
+
+print("\n✓ Figure rendered")
+print("  When the line touches zero, the pooling advantage is expressed:")
+print("  that moment is exactly when an arriving order cannot be immediately assigned.")
 
 # %%
