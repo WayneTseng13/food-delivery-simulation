@@ -97,7 +97,8 @@ class ExperimentAnalysisPipeline:
         return self._phase4_finalize_results(
             num_replications,  # Just pass the count
             experiment_statistics_by_type,
-            experiment_results_with_cis
+            experiment_results_with_cis,
+            replication_metrics_by_type      # add this
         )
     
     def _phase0_prepare_analysis_data(self, raw_replication_results):
@@ -259,7 +260,7 @@ class ExperimentAnalysisPipeline:
         return experiment_results_with_cis
     
     def _phase4_finalize_results(self, num_replications, experiment_statistics_by_type,
-                                experiment_results_with_cis):
+                                experiment_results_with_cis, replication_metrics_by_type):
         """
         Phase 4: Add metadata and finalize experiment summary.
         
@@ -279,7 +280,8 @@ class ExperimentAnalysisPipeline:
             'confidence_level': self.confidence_level,
             'processed_metric_types': self.enabled_metric_types,
             'experiment_statistics': experiment_statistics_by_type,
-            'statistics_with_cis': experiment_results_with_cis
+            'statistics_with_cis': experiment_results_with_cis,
+            'replication_metrics': replication_metrics_by_type    # add this
         }
         
         self.logger.info("Analysis pipeline completed successfully")
