@@ -751,17 +751,13 @@ WHY SINGLE REPLICATION:
     A single replication preserves the raw signal we want to show.
 
 IMMEDIATE ASSIGNMENT RATE (PER-REP):
-    Computed directly from the chosen replication's order repository,
-    using identical logic to the analysis pipeline:
-      - cohort orders: arrival_time >= warmup
-      - completed orders: delivery_time is not None
-      - immediate assignment: assignment_time - arrival_time == 0
-    This ensures the rate is consistent with the time-at-zero from the
-    same replication, making the cross-check meaningful.
+    Read directly from the pipeline's replication_metrics output, which
+    computes it using the same cohort logic as the aggregate table — so
+    the per-rep rate is consistent with the time-at-zero from the same
+    replication, making the cross-check meaningful.
 """
 
 import matplotlib.pyplot as plt
-import numpy as np
 
 print("=" * 60)
 print("POOLING MECHANISM: IDLE DRIVER TIME SERIES")
@@ -769,42 +765,14 @@ print("=" * 60)
 
 # ── Configuration ────────────────────────────────────────────
 TARGET_RATIO = 4.5
-REP_IDX      = 0        # which replication to plot (0-indexed)
-WARMUP       = 500      # minutes — post-warmup window only
+REP_IDX      = 1        # which replication to plot (0-indexed)
 
 baseline_key    = f"ratio_{TARGET_RATIO:.1f}_baseline"
 baseline_2x_key = f"ratio_{TARGET_RATIO:.1f}_2x_baseline"
 
-# ── Helper: post-warmup snapshots for one replication ────────
-def get_post_warmup_snapshots(design_key, rep_idx, warmup_cutoff):
-    rep_result = study_results[design_key][rep_idx]
-    return [s for s in rep_result['system_snapshots']
-            if s['timestamp'] >= warmup_cutoff]
-
-# ── Helper: per-replication immediate assignment rate ─────────
-def compute_imm_assign_rate(design_key, rep_idx, warmup_cutoff):
-    """
-    Replicates the analysis pipeline logic for a single replication.
-    cohort_completed_orders: arrived post-warmup AND delivered.
-    immediate: assignment_time - arrival_time == 0.
-    """
-    repositories = study_results[design_key][rep_idx]['repositories']
-    orders = repositories['order'].find_all()
-    cohort_completed = [
-        o for o in orders
-        if o.arrival_time >= warmup_cutoff and o.delivery_time is not None
-    ]
-    if not cohort_completed:
-        return None
-    n_immediate = sum(
-        1 for o in cohort_completed
-        if (o.assignment_time - o.arrival_time) == 0
-    )
-    return n_immediate / len(cohort_completed)
-
-# ── Extract data ─────────────────────────────────────────────
-baseline_snaps    = get_post_warmup_snapshots(baseline_key,    REP_IDX, WARMUP)
-baseline_2x_snaps = get_post_warmup_snapshots(baseline_2x_key, REP_IDX, WARMUP)
+# ── Extract post-warmup snapshots from pipeline output ───────
+baseline_snaps    = design_analysis_results[baseline_key]['replication_snapshots'][REP_IDX]
+baseline_2x_snaps = design_analysis_results[baseline_2x_key]['replication_snapshots'][REP_IDX]
 
 baseline_times    = [s['timestamp']         for s in baseline_snaps]
 baseline_idle     = [s['available_drivers'] for s in baseline_snaps]
@@ -815,9 +783,9 @@ baseline_2x_idle  = [s['available_drivers'] for s in baseline_2x_snaps]
 frac_zero_base   = sum(1 for v in baseline_idle   if v == 0) / len(baseline_idle)
 frac_zero_base2x = sum(1 for v in baseline_2x_idle if v == 0) / len(baseline_2x_idle)
 
-# ── Per-replication immediate assignment rates ────────────────
-imm_rate_base   = compute_imm_assign_rate(baseline_key,    REP_IDX, WARMUP)
-imm_rate_base2x = compute_imm_assign_rate(baseline_2x_key, REP_IDX, WARMUP)
+# ── Per-replication immediate assignment rate from pipeline ───
+imm_rate_base   = design_analysis_results[baseline_key]['replication_metrics']['system_metrics'][REP_IDX]['immediate_assignment_rate']
+imm_rate_base2x = design_analysis_results[baseline_2x_key]['replication_metrics']['system_metrics'][REP_IDX]['immediate_assignment_rate']
 
 print(f"\nRatio {TARGET_RATIO} | Replication {REP_IDX + 1}")
 print(f"{'':30s}  {'Baseline':>12}  {'2× Baseline':>12}")
@@ -867,7 +835,7 @@ ax_2x.set_title(
 ax_2x.grid(True, alpha=0.3)
 
 # ── Fix x-axis to start exactly at warmup boundary ───────────
-ax_2x.set_xlim(left=WARMUP)
+ax_2x.set_xlim(left=baseline_times[0])
 
 plt.tight_layout()
 plt.show()
