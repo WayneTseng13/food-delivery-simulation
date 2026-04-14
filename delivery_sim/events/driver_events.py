@@ -68,11 +68,16 @@ class DriverLocationUpdatedEvent(DriverEvent):
 
 class DriverAvailableForAssignmentEvent(Event):
     """
-    Event indicating a driver has completed a delivery and is eligible for new assignments.
-    
-    This event is only dispatched after verifying the driver hasn't reached their
-    intended logout time, ensuring assignment attempts only happen for eligible drivers.
+    Event indicating a driver is now available for assignment.
+
+    Dispatched by DriverSchedulingService from two sources:
+    - Driver login: fresh driver entering the system with no prior task
+    - Post-delivery return: driver completed a delivery and is still
+      within their intended service window
+
+    AssignmentService listens exclusively to this event for driver-side
+    assignment triggers. DriverLoggedInEvent is not used for assignment.
     """
     def __init__(self, timestamp, driver_id):
         super().__init__(timestamp)
-        self.driver_id = driver_id        
+        self.driver_id = driver_id   

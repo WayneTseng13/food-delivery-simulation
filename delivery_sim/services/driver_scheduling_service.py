@@ -53,7 +53,15 @@ class DriverSchedulingService:
         # Pass validated information to operation
         self.schedule_driver_logout(driver_id, intended_logout_time)
         self.logger.debug(f"[t={self.env.now:.2f}] Scheduled logout for driver {driver_id} at time {intended_logout_time:.2f}")
-    
+        
+        # Driver is freshly available — signal availability same as post-delivery return
+        self.logger.simulation_event(f"[t={self.env.now:.2f}] Dispatching DriverAvailableForAssignmentEvent for driver {driver_id} (login)")
+        self.event_dispatcher.dispatch(DriverAvailableForAssignmentEvent(
+            timestamp=event.timestamp,
+            driver_id=driver_id
+        ))
+
+
     def handle_delivery_completed(self, event):
         """
         Handler for DeliveryUnitCompletedEvent. Validates driver and checks logout conditions.

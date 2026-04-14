@@ -21,7 +21,7 @@ from delivery_sim.entities.states import OrderState, DriverState, PairState
 from delivery_sim.entities.delivery_unit import DeliveryUnit
 from delivery_sim.events.order_events import OrderCreatedEvent
 from delivery_sim.events.pair_events import PairCreatedEvent, PairingFailedEvent
-from delivery_sim.events.driver_events import DriverLoggedInEvent, DriverAvailableForAssignmentEvent
+from delivery_sim.events.driver_events import DriverAvailableForAssignmentEvent
 from delivery_sim.events.delivery_unit_events import DeliveryUnitAssignedEvent
 from delivery_sim.utils.location_utils import calculate_distance
 from delivery_sim.utils.logging_system import get_logger
@@ -90,10 +90,7 @@ class AssignmentService:
             self.logger.simulation_event(f"[t={self.env.now:.2f}] Registering handler for OrderCreatedEvent")
             event_dispatcher.register(OrderCreatedEvent, self.handle_order_created)
         
-        # Common events for both modes
-        self.logger.simulation_event(f"[t={self.env.now:.2f}] Registering handler for DriverLoggedInEvent")
-        event_dispatcher.register(DriverLoggedInEvent, self.handle_driver_login)
-        
+        # Register DriverAvailableForAssignmentEvent
         self.logger.simulation_event(f"[t={self.env.now:.2f}] Registering handler for DriverAvailableForAssignmentEvent")
         event_dispatcher.register(DriverAvailableForAssignmentEvent, self.handle_driver_available_for_assignment)
         
@@ -154,24 +151,6 @@ class AssignmentService:
         
         # Attempt event-driven assignment
         self.attempt_event_driven_assignment_from_delivery_entity(order)
-    
-    def handle_driver_login(self, event):
-        """
-        Handler for DriverLoggedInEvent - new driver available for work.
-        
-        Args:
-            event: DriverLoggedInEvent containing driver_id
-        """
-        self.logger.simulation_event(f"[t={self.env.now:.2f}] Handling DriverLoggedInEvent for driver {event.driver_id}")
-        
-        # Get the driver from repository
-        driver = self.driver_repository.find_by_id(event.driver_id)
-        if driver is None:
-            self.logger.error(f"[t={self.env.now:.2f}] Driver {event.driver_id} not found in repository")
-            return
-        
-        # Attempt event-driven assignment
-        self.attempt_event_driven_assignment_from_driver(driver)
     
     def handle_driver_available_for_assignment(self, event):
         """
