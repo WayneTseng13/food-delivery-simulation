@@ -764,8 +764,8 @@ print("POOLING MECHANISM: IDLE DRIVER TIME SERIES")
 print("=" * 60)
 
 # ── Configuration ────────────────────────────────────────────
-TARGET_RATIO = 4.5
-REP_IDX      = 1        # which replication to plot (0-indexed)
+TARGET_RATIO = 6.5
+REP_IDX      = 4   # which replication to plot (0-indexed)
 
 baseline_key    = f"ratio_{TARGET_RATIO:.1f}_baseline"
 baseline_2x_key = f"ratio_{TARGET_RATIO:.1f}_2x_baseline"
