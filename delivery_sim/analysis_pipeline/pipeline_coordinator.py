@@ -125,12 +125,14 @@ class ExperimentAnalysisPipeline:
         
         for i, raw_replication_result in enumerate(raw_replication_results):
             repositories = raw_replication_result['repositories']
-            system_snapshots = raw_replication_result.get('system_snapshots', [])  # NEW
+            system_snapshots = raw_replication_result.get('system_snapshots', [])  
+            event_records = raw_replication_result.get('event_records', {}) # NEW
             
             analysis_data = prepare_analysis_data(
                 repositories, 
                 self.warmup_period,
-                system_snapshots  # NEW
+                system_snapshots,  
+                event_records   # NEW
             )
             prepared_analysis_data.append(analysis_data)
             
@@ -283,7 +285,8 @@ class ExperimentAnalysisPipeline:
             'experiment_statistics': experiment_statistics_by_type,
             'statistics_with_cis': experiment_results_with_cis,
             'replication_metrics': replication_metrics_by_type,    # add this
-            'replication_snapshots': [ad.post_warmup_snapshots for ad in prepared_analysis_data]  #add this too
+            'replication_snapshots': [ad.post_warmup_snapshots for ad in prepared_analysis_data],  #add this too
+            'replication_event_records': [ad.post_warmup_event_records for ad in prepared_analysis_data]  # ADD
         }
         
         self.logger.info("Analysis pipeline completed successfully")

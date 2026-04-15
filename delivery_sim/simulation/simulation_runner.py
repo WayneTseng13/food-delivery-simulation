@@ -32,7 +32,7 @@ from delivery_sim.system_data.system_data_definitions import SystemDataDefinitio
 from delivery_sim.system_data.system_data_collector import SystemDataCollector
 from delivery_sim.system_data.system_snapshot_repository import SystemSnapshotRepository
 from delivery_sim.utils.priority_scoring import PriorityScorer
-
+from delivery_sim.event_collectors.collector_registry import EventCollectorRegistry
 
 class SimulationRunner:
     """
@@ -86,6 +86,8 @@ class SimulationRunner:
         self.system_data_definitions = None
         self.system_data_collector = None
         self.system_snapshot_repository = None
+
+        self.event_collector_registry = None
     
     def run_experiment(self, operational_config, experiment_config, scoring_config=None):
         """
@@ -190,7 +192,10 @@ class SimulationRunner:
         
         # 7. Initialize system data collection infrastructure
         self._initialize_system_data_collection()
-        
+
+        # 8. Initialize event collection infrastructure       ← ADD THIS
+        self._initialize_event_collection()
+
         self.logger.debug(f"Variant components initialized for replication {replication_number}")
     
     def _create_id_generators(self):
@@ -301,6 +306,21 @@ class SimulationRunner:
         
         self.logger.debug(f"System data collection initialized with interval {collection_interval} minutes")
     
+    def _initialize_event_collection(self):
+        """
+        Initialize event-driven data collection for mechanistic analysis.
+
+        Separate from _initialize_system_data_collection() by design:
+            - System data collection: time-driven, SimPy process, polls state at intervals
+            - Event collection: event-driven, reacts to dispatched events as they occur
+
+        Adding new event collectors requires only changes to EventCollectorRegistry.
+        This method never needs to change.
+        """
+        self.logger.debug("Initializing event collection infrastructure...")
+        self.event_collector_registry = EventCollectorRegistry(self.event_dispatcher)
+        self.logger.debug("Event collection initialized")
+
     def _run_single_replication(self):
         """
         Execute single replication and return raw repository data and system snapshots.
@@ -328,5 +348,6 @@ class SimulationRunner:
         # Return enhanced results structure
         return {
             'repositories': repositories,
-            'system_snapshots': system_snapshots
+            'system_snapshots': system_snapshots,
+            'event_records': self.event_collector_registry.get_all_records()
         }

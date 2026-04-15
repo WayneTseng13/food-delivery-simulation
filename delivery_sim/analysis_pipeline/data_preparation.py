@@ -18,7 +18,7 @@ class AnalyticalPopulations:
     Each method creates a specific population tailored to particular metric needs.
     """
     
-    def __init__(self, repositories, warmup_period, system_snapshots=None):
+    def __init__(self, repositories, warmup_period, system_snapshots=None, event_records=None):
         """
         Initialize the population factory.
         
@@ -30,6 +30,7 @@ class AnalyticalPopulations:
         self._repositories = repositories
         self._warmup_period = warmup_period
         self._system_snapshots = system_snapshots or []
+        self._event_records = event_records or {}
     
     def get_cohort_orders(self):
         """
@@ -187,7 +188,21 @@ class AnalyticalPopulations:
             if snapshot['timestamp'] >= self._warmup_period
         ]
 
+    def get_post_warmup_event_records(self):
+        """
+        Filter all event record streams by warmup period.
 
+        Returns dict with same keys as the input event_records, each value
+        filtered to records with timestamp >= warmup_period.
+
+        Generic over collector names — adding new collectors to the registry
+        requires no changes here.
+        """
+        filtered = {}
+        for name, records in self._event_records.items():
+            filtered[name] = [r for r in records if r.timestamp >= self._warmup_period]
+        return filtered
+    
 class AnalysisData:
     """
     Container object holding all analytical populations for a replication.
@@ -210,9 +225,10 @@ class AnalysisData:
         self.cohort_completed_delivery_units = populations.get_cohort_completed_delivery_units()
         self.cohort_paired_orders = populations.get_cohort_paired_orders()
         self.post_warmup_snapshots = populations.get_post_warmup_snapshots()  # NEW
+        self.post_warmup_event_records = populations.get_post_warmup_event_records()
 
 
-def prepare_analysis_data(repositories, warmup_period, system_snapshots=None):
+def prepare_analysis_data(repositories, warmup_period, system_snapshots=None, event_records=None):
     """
     Main entry point for creating analysis-ready data populations.
     
@@ -223,11 +239,12 @@ def prepare_analysis_data(repositories, warmup_period, system_snapshots=None):
         repositories: Dict containing all entity repositories from simulation
         warmup_period: Duration to exclude from analysis
         system_snapshots: List of system state snapshots (optional)
+        event_records
         
     Returns:
         AnalysisData: Container with all populations ready for metric calculations
     """
-    populations = AnalyticalPopulations(repositories, warmup_period, system_snapshots)
+    populations = AnalyticalPopulations(repositories, warmup_period, system_snapshots, event_records)
     return AnalysisData(populations)
 
 
