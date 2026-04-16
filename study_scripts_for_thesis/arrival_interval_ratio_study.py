@@ -844,4 +844,137 @@ print("\n✓ Figure rendered")
 print("  When the line touches zero, the pooling advantage is expressed:")
 print("  that moment is exactly when an arriving order cannot be immediately assigned.")
 
-# %%
+# %% CELL AD HOC: Driver Availability Event Rate — Mechanistic Evidence
+"""
+PURPOSE:
+    Show the driver availability event rate difference between Baseline and
+    2× Baseline as direct mechanistic evidence for the performance gap.
+
+    Unlike idle driver count (which shows an outcome) or assignment time
+    (which shows a performance metric), the availability event rate shows
+    the underlying process: how frequently the system generates assignment
+    opportunities. Baseline produces these events at roughly twice the rate
+    of 2× Baseline at any ratio, because it maintains roughly twice as many
+    active drivers cycling through deliveries.
+
+    This mechanism operates at ALL ratios but manifests differently:
+    - Medium ratios: many events go unclaimed (idle driver available),
+      so the rate advantage directly produces a larger idle buffer
+    - High ratios / saturation: every event is immediately consumed by
+      the queue, so the rate advantage directly determines how fast
+      queued orders get served
+
+    The cumulative event count plot makes this visible as slope — steeper
+    slope = higher event rate = more assignment opportunities per unit time.
+
+SANITY CHECK:
+    Total event count ratio (baseline / 2x baseline) should be approximately
+    2.0 at all ratios, since both configs scale arrival processes proportionally.
+    Deviations from 2.0 indicate replication-level variance, not a systematic
+    difference in mechanism.
+"""
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+print("=" * 60)
+print("DRIVER AVAILABILITY EVENT RATE: MECHANISTIC EVIDENCE")
+print("=" * 60)
+
+# ── Configuration ────────────────────────────────────────────
+TARGET_RATIO = 4.5
+REP_IDX      = 0        # replication index (0-indexed)
+
+baseline_key    = f"ratio_{TARGET_RATIO:.1f}_baseline"
+baseline_2x_key = f"ratio_{TARGET_RATIO:.1f}_2x_baseline"
+
+# ── Extract post-warmup event records from pipeline output ───
+baseline_records    = design_analysis_results[baseline_key]['replication_event_records'][REP_IDX]['driver_availability']
+baseline_2x_records = design_analysis_results[baseline_2x_key]['replication_event_records'][REP_IDX]['driver_availability']
+
+baseline_times    = [r.timestamp for r in baseline_records]
+baseline_2x_times = [r.timestamp for r in baseline_2x_records]
+
+# ── Sanity check: total event counts and ratio ────────────────
+n_base   = len(baseline_times)
+n_base2x = len(baseline_2x_times)
+count_ratio = n_base / n_base2x if n_base2x > 0 else float('inf')
+
+print(f"\nRatio {TARGET_RATIO} | Replication {REP_IDX + 1}")
+print(f"{'':30s}  {'Baseline':>12}  {'2× Baseline':>12}")
+print(f"  {'Total availability events':30s}  {n_base:>12d}  {n_base2x:>12d}")
+print(f"  {'Event count ratio (base/2x)':30s}  {count_ratio:>12.3f}")
+print(f"\n  (Expected ratio ≈ 2.0 — baseline has ~2× active drivers)")
+
+# ── Build cumulative event series ────────────────────────────
+# Cumulative count at each event timestamp
+baseline_cumulative    = list(range(1, n_base + 1))
+baseline_2x_cumulative = list(range(1, n_base2x + 1))
+
+# ── Rolling event rate (events per window) ───────────────────
+WINDOW = 100  # minutes
+
+def rolling_rate(timestamps, window, t_start, t_end):
+    """Count events in each rolling window across the analysis period."""
+    bins = np.arange(t_start, t_end, window)
+    counts, _ = np.histogram(timestamps, bins=bins)
+    bin_centers = (bins[:-1] + bins[1:]) / 2
+    return bin_centers, counts
+
+t_start = baseline_times[0] if baseline_times else 500
+t_end   = max(
+    baseline_times[-1] if baseline_times else 2000,
+    baseline_2x_times[-1] if baseline_2x_times else 2000
+)
+
+bin_centers, base_rates   = rolling_rate(baseline_times,    WINDOW, t_start, t_end)
+_,           base_2x_rates = rolling_rate(baseline_2x_times, WINDOW, t_start, t_end)
+
+# ── Plot ─────────────────────────────────────────────────────
+fig, (ax_cum, ax_rate) = plt.subplots(2, 1, figsize=(14, 8), sharex=False)
+
+fig.suptitle(
+    f"Driver Availability Event Rate — Ratio {TARGET_RATIO} (Replication {REP_IDX + 1})\n"
+    f"Each event = one driver becoming available for assignment",
+    fontsize=13,
+    fontweight='bold'
+)
+
+# ── Top panel: Cumulative events ─────────────────────────────
+ax_cum.plot(baseline_times,    baseline_cumulative,    color='#2E86AB',
+            linewidth=1.2, label=f'Baseline  (n={n_base})')
+ax_cum.plot(baseline_2x_times, baseline_2x_cumulative, color='#A23B72',
+            linewidth=1.2, label=f'2× Baseline  (n={n_base2x})', linestyle='--')
+
+ax_cum.set_ylabel('Cumulative Availability Events', fontsize=11)
+ax_cum.set_title(
+    f'Cumulative count — steeper slope = higher event rate  '
+    f'|  Count ratio: {count_ratio:.2f}×',
+    fontsize=10, loc='left'
+)
+ax_cum.legend(fontsize=10)
+ax_cum.grid(True, alpha=0.3)
+
+# ── Bottom panel: Rolling rate ────────────────────────────────
+ax_rate.plot(bin_centers, base_rates,   color='#2E86AB',
+             linewidth=1.5, marker='o', markersize=3, label='Baseline')
+ax_rate.plot(bin_centers, base_2x_rates, color='#A23B72',
+             linewidth=1.5, marker='s', markersize=3, label='2× Baseline', linestyle='--')
+
+ax_rate.set_xlabel('Simulation Time (minutes)', fontsize=11)
+ax_rate.set_ylabel(f'Events per {WINDOW}-min window', fontsize=11)
+ax_rate.set_title(
+    f'Rolling event rate (window = {WINDOW} min) — reflects feast/famine structure',
+    fontsize=10, loc='left'
+)
+ax_rate.legend(fontsize=10)
+ax_rate.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
+print("\n✓ Figure rendered")
+print("  Top panel: cumulative slope directly shows rate difference")
+print("  Bottom panel: rolling rate shows feast/famine structure persists")
+print("  Both panels show the same mechanism — baseline generates more")
+print("  assignment opportunities per unit time at every loading level.")
