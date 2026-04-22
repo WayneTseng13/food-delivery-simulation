@@ -613,7 +613,7 @@ for row in metrics_data:
 
 print("="*230)
 
-# %% AD HOC VISUALIZAYION CELL
+# %% AD HOC VISUALIZAION CELL
 """
 VISUALIZATION OBJECTIVE: Test the hypothesis that "Arrival interval ratio determines 
 which regime the system is in (qualitative behavior), but absolute intensity determines 
@@ -764,8 +764,8 @@ print("POOLING MECHANISM: IDLE DRIVER TIME SERIES")
 print("=" * 60)
 
 # ── Configuration ────────────────────────────────────────────
-TARGET_RATIO = 6.5
-REP_IDX      = 4   # which replication to plot (0-indexed)
+TARGET_RATIO = 4.5
+REP_IDX      = 1   # which replication to plot (0-indexed)
 
 baseline_key    = f"ratio_{TARGET_RATIO:.1f}_baseline"
 baseline_2x_key = f"ratio_{TARGET_RATIO:.1f}_2x_baseline"
@@ -882,7 +882,7 @@ print("DRIVER AVAILABILITY EVENT RATE: MECHANISTIC EVIDENCE")
 print("=" * 60)
 
 # ── Configuration ────────────────────────────────────────────
-TARGET_RATIO = 4.5
+TARGET_RATIO = 7.0
 REP_IDX      = 0        # replication index (0-indexed)
 
 baseline_key    = f"ratio_{TARGET_RATIO:.1f}_baseline"
@@ -978,3 +978,392 @@ print("  Top panel: cumulative slope directly shows rate difference")
 print("  Bottom panel: rolling rate shows feast/famine structure persists")
 print("  Both panels show the same mechanism — baseline generates more")
 print("  assignment opportunities per unit time at every loading level.")
+
+# %% Active Drivers Over Time
+"""
+PURPOSE:
+    Show total active driver population (AVAILABLE + DELIVERING) over time
+    for Baseline and 2× Baseline at a chosen ratio, complementing the idle
+    driver plot with the capacity-level view.
+
+    While idle drivers (available_drivers) show the *buffer* — how much
+    slack exists for immediate assignment — active drivers show the *capacity
+    ceiling* that the buffer is drawn from. The two plots tell different parts
+    of the same story:
+        • Active drivers  → how large is the driver pool?
+        • Idle drivers    → how much of that pool is free right now?
+
+    In steady state, mean active drivers should sit near the Little's Law
+    theoretical value (λ_driver × E[service duration]).  A dashed horizontal
+    line at the per-replication mean serves as that proxy reference without
+    requiring the design_points config dict.
+
+FIGURE DESIGN:
+    Two stacked subplots, shared x-axis, same y-scale.
+    Each panel shows one replication's active_drivers trajectory.
+    A dashed horizontal line marks the replication mean (Little's Law proxy).
+
+WHY SINGLE REPLICATION:
+    Same rationale as the idle driver cell: cross-replication averaging
+    smooths out the trajectory and hides the true magnitude of fluctuations
+    visible in any individual run.
+"""
+
+import matplotlib.pyplot as plt
+
+print("=" * 60)
+print("POOLING MECHANISM: ACTIVE DRIVER TIME SERIES")
+print("=" * 60)
+
+# ── Configuration ────────────────────────────────────────────
+TARGET_RATIO = 4.5
+REP_IDX      = 1   # which replication to plot (0-indexed)
+
+baseline_key    = f"ratio_{TARGET_RATIO:.1f}_baseline"
+baseline_2x_key = f"ratio_{TARGET_RATIO:.1f}_2x_baseline"
+
+# ── Extract post-warmup snapshots from pipeline output ───────
+baseline_snaps    = design_analysis_results[baseline_key]['replication_snapshots'][REP_IDX]
+baseline_2x_snaps = design_analysis_results[baseline_2x_key]['replication_snapshots'][REP_IDX]
+
+baseline_times      = [s['timestamp']      for s in baseline_snaps]
+baseline_active     = [s['active_drivers'] for s in baseline_snaps]
+baseline_2x_times   = [s['timestamp']      for s in baseline_2x_snaps]
+baseline_2x_active  = [s['active_drivers'] for s in baseline_2x_snaps]
+
+# ── Per-replication means (Little's Law proxy) ───────────────
+mean_active_base   = sum(baseline_active)    / len(baseline_active)
+mean_active_base2x = sum(baseline_2x_active) / len(baseline_2x_active)
+
+print(f"\nRatio {TARGET_RATIO} | Replication {REP_IDX + 1}")
+print(f"{'':30s}  {'Baseline':>12}  {'2× Baseline':>12}")
+print(f"  {'Mean active drivers':30s}  {mean_active_base:>12.1f}  {mean_active_base2x:>12.1f}")
+print(f"  {'Min active drivers':30s}  {min(baseline_active):>12d}  {min(baseline_2x_active):>12d}")
+print(f"  {'Max active drivers':30s}  {max(baseline_active):>12d}  {max(baseline_2x_active):>12d}")
+print(f"\n  (mean ≈ Little's Law: λ_driver × E[service duration] in steady state)")
+
+# ── Shared y-axis upper bound ─────────────────────────────────
+y_max = max(max(baseline_active), max(baseline_2x_active)) + 1
+
+# ── Plot ─────────────────────────────────────────────────────
+fig, (ax_base, ax_2x) = plt.subplots(
+    2, 1,
+    figsize=(14, 7),
+    sharex=True
+)
+
+fig.suptitle(
+    f"Active Driver Count Over Time — Ratio {TARGET_RATIO} (Replication {REP_IDX + 1})\n"
+    f"Active = available + delivering drivers; dashed line = replication mean (Little's Law proxy)",
+    fontsize=13,
+    fontweight='bold'
+)
+
+# ── Top panel: Baseline ───────────────────────────────────────
+ax_base.plot(baseline_times, baseline_active, color='#27AE60', linewidth=0.8, alpha=0.9)
+ax_base.axhline(mean_active_base, color='#1A6B3C', linewidth=1.2,
+                linestyle='--', alpha=0.7, label=f'Mean: {mean_active_base:.1f}')
+ax_base.set_ylim(-0.5, y_max)
+ax_base.set_ylabel('Active Drivers', fontsize=11)
+ax_base.set_title(
+    f"Baseline  |  Mean active: {mean_active_base:.1f}  "
+    f"|  Min: {min(baseline_active)}  |  Max: {max(baseline_active)}",
+    fontsize=10, loc='left'
+)
+ax_base.legend(loc='upper right', fontsize=9)
+ax_base.grid(True, alpha=0.3)
+
+# ── Bottom panel: 2× Baseline ────────────────────────────────
+ax_2x.plot(baseline_2x_times, baseline_2x_active, color='#8E44AD', linewidth=0.8, alpha=0.9)
+ax_2x.axhline(mean_active_base2x, color='#5B2C6F', linewidth=1.2,
+              linestyle='--', alpha=0.7, label=f'Mean: {mean_active_base2x:.1f}')
+ax_2x.set_ylim(-0.5, y_max)
+ax_2x.set_ylabel('Active Drivers', fontsize=11)
+ax_2x.set_xlabel('Simulation Time (minutes)', fontsize=11)
+ax_2x.set_title(
+    f"2× Baseline  |  Mean active: {mean_active_base2x:.1f}  "
+    f"|  Min: {min(baseline_2x_active)}  |  Max: {max(baseline_2x_active)}",
+    fontsize=10, loc='left'
+)
+ax_2x.legend(loc='upper right', fontsize=9)
+ax_2x.grid(True, alpha=0.3)
+
+# ── Fix x-axis to start exactly at warmup boundary ───────────
+ax_2x.set_xlim(left=baseline_times[0])
+
+plt.tight_layout()
+plt.show()
+
+print("\n✓ Figure rendered")
+print("  Active drivers = AVAILABLE + DELIVERING (excludes OFFLINE).")
+print("  Baseline runs roughly 2× as many active drivers as 2× Baseline,")
+print("  which is the direct source of its larger idle buffer.")
+
+# %% CELL AD HOC: Pooling Mechanism Visualization — Driver Utilization Over Time
+"""
+PURPOSE:
+    Show driver utilization (delivering_drivers / active_drivers) over time
+    for Baseline and 2× Baseline at a chosen ratio.
+
+    Utilization is the complement of the idle driver picture:
+        • High utilization → most active drivers are delivering; little idle buffer
+        • Low utilization  → many active drivers are idle; large buffer for instant assignment
+
+    This makes the three ad hoc plots a coherent trilogy:
+        1. Active drivers    → how large is the driver pool?
+        2. Idle drivers      → how much of that pool is free right now?
+        3. Driver utilization → what fraction of the pool is actively working?
+
+    Because Baseline runs roughly 2× as many active drivers as 2× Baseline,
+    it can absorb demand fluctuations with a larger idle buffer while
+    maintaining *lower* utilization — i.e., it pays for the pooling
+    advantage with a larger workforce cycling through idle periods.
+
+FIGURE DESIGN:
+    Two stacked subplots, shared x-axis, same y-scale (0–100%).
+    Each panel shows one replication's driver_utilization trajectory.
+    A dashed horizontal line marks the replication mean.
+    A second dashed line at 100% marks full saturation as a reference ceiling.
+
+WHY SINGLE REPLICATION:
+    Same rationale as the other ad hoc cells: averaging across replications
+    smooths out the moment-to-moment fluctuations that reveal the true
+    operational character of each configuration.
+"""
+
+import matplotlib.pyplot as plt
+
+print("=" * 60)
+print("DRIVER UTILIZATION TIME SERIES")
+print("=" * 60)
+
+# ── Configuration ────────────────────────────────────────────
+TARGET_RATIO = 4.5
+REP_IDX      = 1   # which replication to plot (0-indexed)
+
+baseline_key    = f"ratio_{TARGET_RATIO:.1f}_baseline"
+baseline_2x_key = f"ratio_{TARGET_RATIO:.1f}_2x_baseline"
+
+# ── Extract post-warmup snapshots from pipeline output ───────
+baseline_snaps    = design_analysis_results[baseline_key]['replication_snapshots'][REP_IDX]
+baseline_2x_snaps = design_analysis_results[baseline_2x_key]['replication_snapshots'][REP_IDX]
+
+baseline_times   = [s['timestamp']         for s in baseline_snaps]
+baseline_util    = [s['driver_utilization'] for s in baseline_snaps]
+baseline_2x_times = [s['timestamp']         for s in baseline_2x_snaps]
+baseline_2x_util  = [s['driver_utilization'] for s in baseline_2x_snaps]
+
+# ── Per-replication summary statistics ───────────────────────
+mean_util_base   = sum(baseline_util)    / len(baseline_util)
+mean_util_base2x = sum(baseline_2x_util) / len(baseline_2x_util)
+
+# Fraction of time at full saturation (utilization = 1.0)
+frac_full_base   = sum(1 for v in baseline_util   if v == 1.0) / len(baseline_util)
+frac_full_base2x = sum(1 for v in baseline_2x_util if v == 1.0) / len(baseline_2x_util)
+
+print(f"\nRatio {TARGET_RATIO} | Replication {REP_IDX + 1}")
+print(f"{'':35s}  {'Baseline':>12}  {'2× Baseline':>12}")
+print(f"  {'Mean utilization':35s}  {mean_util_base:>11.1%}  {mean_util_base2x:>11.1%}")
+print(f"  {'Min utilization':35s}  {min(baseline_util):>11.1%}  {min(baseline_2x_util):>11.1%}")
+print(f"  {'Max utilization':35s}  {max(baseline_util):>11.1%}  {max(baseline_2x_util):>11.1%}")
+print(f"  {'Fraction of time fully saturated (=100%)':35s}  {frac_full_base:>11.1%}  {frac_full_base2x:>11.1%}")
+print(f"\n  (full saturation = every active driver is delivering; no idle buffer at all)")
+
+# ── Shared y-axis: fixed 0–1 since utilization is a rate ─────
+y_min, y_max = -0.02, 1.05
+
+# ── Plot ─────────────────────────────────────────────────────
+fig, (ax_base, ax_2x) = plt.subplots(
+    2, 1,
+    figsize=(14, 7),
+    sharex=True
+)
+
+fig.suptitle(
+    f"Driver Utilization Over Time — Ratio {TARGET_RATIO} (Replication {REP_IDX + 1})\n"
+    f"Utilization = delivering drivers / active drivers  |  touching 100% means zero idle buffer",
+    fontsize=13,
+    fontweight='bold'
+)
+
+# ── Top panel: Baseline ───────────────────────────────────────
+ax_base.plot(baseline_times, baseline_util, color='#E67E22', linewidth=0.8, alpha=0.9)
+ax_base.axhline(mean_util_base, color='#A04000', linewidth=1.2,
+                linestyle='--', alpha=0.8, label=f'Mean: {mean_util_base:.1%}')
+ax_base.axhline(1.0, color='gray', linewidth=0.8, linestyle=':', alpha=0.5, label='100% ceiling')
+ax_base.set_ylim(y_min, y_max)
+ax_base.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f'{v:.0%}'))
+ax_base.set_ylabel('Utilization', fontsize=11)
+ax_base.set_title(
+    f"Baseline  |  Mean: {mean_util_base:.1%}  "
+    f"|  Time fully saturated: {frac_full_base:.1%}",
+    fontsize=10, loc='left'
+)
+ax_base.legend(loc='lower right', fontsize=9)
+ax_base.grid(True, alpha=0.3)
+
+# ── Bottom panel: 2× Baseline ────────────────────────────────
+ax_2x.plot(baseline_2x_times, baseline_2x_util, color='#C0392B', linewidth=0.8, alpha=0.9)
+ax_2x.axhline(mean_util_base2x, color='#7B241C', linewidth=1.2,
+              linestyle='--', alpha=0.8, label=f'Mean: {mean_util_base2x:.1%}')
+ax_2x.axhline(1.0, color='gray', linewidth=0.8, linestyle=':', alpha=0.5, label='100% ceiling')
+ax_2x.set_ylim(y_min, y_max)
+ax_2x.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f'{v:.0%}'))
+ax_2x.set_ylabel('Utilization', fontsize=11)
+ax_2x.set_xlabel('Simulation Time (minutes)', fontsize=11)
+ax_2x.set_title(
+    f"2× Baseline  |  Mean: {mean_util_base2x:.1%}  "
+    f"|  Time fully saturated: {frac_full_base2x:.1%}",
+    fontsize=10, loc='left'
+)
+ax_2x.legend(loc='lower right', fontsize=9)
+ax_2x.grid(True, alpha=0.3)
+
+# ── Fix x-axis to start exactly at warmup boundary ───────────
+ax_2x.set_xlim(left=baseline_times[0])
+
+plt.tight_layout()
+plt.show()
+
+print("\n✓ Figure rendered")
+print("  Utilization is the complement of the idle driver picture.")
+print("  Lower utilization in Baseline reflects its larger idle buffer —")
+print("  the same mechanism that drives its higher immediate assignment rate.")
+
+# %% CELL AD HOC: Pooling Mechanism Visualization — Active vs Delivering Drivers Overlay
+"""
+PURPOSE:
+    Overlay active driver count and delivering (busy) driver count on the same
+    axes so saturation events are immediately visible as moments where the two
+    lines converge.
+
+    The shaded gap between the lines IS the idle buffer (= available_drivers).
+    When the gap closes to zero the system is fully saturated: every active
+    driver is delivering and any arriving order must queue.
+
+    This plot unifies the previous three ad hoc cells into one image:
+        • Top line    → active drivers   (pool size)
+        • Bottom line → delivering drivers (consumed capacity)
+        • Shaded gap  → idle buffer      (available drivers)
+        • Lines touch → saturation       (utilization = 100%)
+
+    The pooling argument is visible in the gap width:
+        Baseline maintains a wider, more stable idle buffer than 2× Baseline
+        because its larger active pool absorbs demand fluctuations without
+        the gap closing to zero as frequently.
+
+FIGURE DESIGN:
+    Two stacked subplots, shared x-axis, same y-scale.
+    Each panel overlays active (solid) and delivering (dashed) lines with
+    the gap filled in to represent the idle buffer.
+"""
+
+import matplotlib.pyplot as plt
+
+print("=" * 60)
+print("ACTIVE vs DELIVERING DRIVERS OVERLAY")
+print("=" * 60)
+
+# ── Configuration ────────────────────────────────────────────
+TARGET_RATIO = 4.5
+REP_IDX      = 1   # which replication to plot (0-indexed)
+
+baseline_key    = f"ratio_{TARGET_RATIO:.1f}_baseline"
+baseline_2x_key = f"ratio_{TARGET_RATIO:.1f}_2x_baseline"
+
+# ── Extract post-warmup snapshots ────────────────────────────
+baseline_snaps    = design_analysis_results[baseline_key]['replication_snapshots'][REP_IDX]
+baseline_2x_snaps = design_analysis_results[baseline_2x_key]['replication_snapshots'][REP_IDX]
+
+baseline_times      = [s['timestamp']          for s in baseline_snaps]
+baseline_active     = [s['active_drivers']     for s in baseline_snaps]
+baseline_delivering = [s['delivering_drivers'] for s in baseline_snaps]
+
+baseline_2x_times      = [s['timestamp']          for s in baseline_2x_snaps]
+baseline_2x_active     = [s['active_drivers']     for s in baseline_2x_snaps]
+baseline_2x_delivering = [s['delivering_drivers'] for s in baseline_2x_snaps]
+
+# ── Summary statistics ───────────────────────────────────────
+# Saturation: delivering == active (idle buffer = 0)
+frac_saturated_base   = sum(1 for a, d in zip(baseline_active, baseline_delivering)
+                            if a == d) / len(baseline_active)
+frac_saturated_base2x = sum(1 for a, d in zip(baseline_2x_active, baseline_2x_delivering)
+                            if a == d) / len(baseline_2x_active)
+
+# Mean idle buffer (gap)
+mean_gap_base   = sum(a - d for a, d in zip(baseline_active, baseline_delivering)) / len(baseline_active)
+mean_gap_base2x = sum(a - d for a, d in zip(baseline_2x_active, baseline_2x_delivering)) / len(baseline_2x_active)
+
+print(f"\nRatio {TARGET_RATIO} | Replication {REP_IDX + 1}")
+print(f"{'':38s}  {'Baseline':>12}  {'2× Baseline':>12}")
+print(f"  {'Mean idle buffer (active − delivering)':38s}  {mean_gap_base:>12.1f}  {mean_gap_base2x:>12.1f}")
+print(f"  {'Fraction of time fully saturated':38s}  {frac_saturated_base:>11.1%}  {frac_saturated_base2x:>11.1%}")
+print(f"\n  (fully saturated = delivering == active, idle buffer = 0)")
+
+# ── Shared y-axis upper bound ─────────────────────────────────
+y_max = max(max(baseline_active), max(baseline_2x_active)) + 1
+
+# ── Colours ──────────────────────────────────────────────────
+BASE_ACTIVE     = '#1A5276'   # dark blue  — active line
+BASE_DELIVERING = '#2E86AB'   # mid blue   — delivering line
+BASE_FILL       = '#AED6F1'   # light blue — idle buffer fill
+
+X2_ACTIVE       = '#6C3483'   # dark purple
+X2_DELIVERING   = '#A23B72'   # mid purple
+X2_FILL         = '#D7BDE2'   # light purple
+
+# ── Plot ─────────────────────────────────────────────────────
+fig, (ax_base, ax_2x) = plt.subplots(
+    2, 1,
+    figsize=(14, 7),
+    sharex=True
+)
+
+fig.suptitle(
+    f"Active vs Delivering Drivers — Ratio {TARGET_RATIO} (Replication {REP_IDX + 1})\n"
+    f"Shaded gap = idle buffer (available drivers).  Lines touching = full saturation.",
+    fontsize=13,
+    fontweight='bold'
+)
+
+# ── Top panel: Baseline ───────────────────────────────────────
+ax_base.plot(baseline_times, baseline_active,     color=BASE_ACTIVE,     linewidth=1.2, label='Active drivers')
+ax_base.plot(baseline_times, baseline_delivering, color=BASE_DELIVERING, linewidth=1.2, linestyle='--', label='Delivering (busy)')
+ax_base.fill_between(baseline_times, baseline_delivering, baseline_active,
+                     color=BASE_FILL, alpha=0.5, label='Idle buffer (gap)')
+ax_base.set_ylim(-0.5, y_max)
+ax_base.set_ylabel('Drivers', fontsize=11)
+ax_base.set_title(
+    f"Baseline  |  Mean idle buffer: {mean_gap_base:.1f}  "
+    f"|  Time fully saturated: {frac_saturated_base:.1%}",
+    fontsize=10, loc='left'
+)
+ax_base.legend(loc='upper right', fontsize=9)
+ax_base.grid(True, alpha=0.3)
+
+# ── Bottom panel: 2× Baseline ────────────────────────────────
+ax_2x.plot(baseline_2x_times, baseline_2x_active,     color=X2_ACTIVE,     linewidth=1.2, label='Active drivers')
+ax_2x.plot(baseline_2x_times, baseline_2x_delivering, color=X2_DELIVERING, linewidth=1.2, linestyle='--', label='Delivering (busy)')
+ax_2x.fill_between(baseline_2x_times, baseline_2x_delivering, baseline_2x_active,
+                   color=X2_FILL, alpha=0.5, label='Idle buffer (gap)')
+ax_2x.set_ylim(-0.5, y_max)
+ax_2x.set_ylabel('Drivers', fontsize=11)
+ax_2x.set_xlabel('Simulation Time (minutes)', fontsize=11)
+ax_2x.set_title(
+    f"2× Baseline  |  Mean idle buffer: {mean_gap_base2x:.1f}  "
+    f"|  Time fully saturated: {frac_saturated_base2x:.1%}",
+    fontsize=10, loc='left'
+)
+ax_2x.legend(loc='upper right', fontsize=9)
+ax_2x.grid(True, alpha=0.3)
+
+# ── Fix x-axis to start exactly at warmup boundary ───────────
+ax_2x.set_xlim(left=baseline_times[0])
+
+plt.tight_layout()
+plt.show()
+
+print("\n✓ Figure rendered")
+print("  The shaded gap equals available_drivers at every time point.")
+print("  Baseline's wider, more persistent gap explains its higher")
+print("  immediate assignment rate relative to 2× Baseline.")
