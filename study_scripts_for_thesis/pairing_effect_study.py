@@ -828,4 +828,266 @@ print("  • Statistical significance testing")
 print("  • Regime boundary shift analysis")
 print("="*80)
 
+# %% AD HOC VISUALIZATION CELL
+"""
+VISUALIZATION OBJECTIVE:
+    Produce the two figures for Slide 6 (Study 2 — Order Pairing Effects).
+
+    Figure 4.3 — Regime Boundary Shift
+        Growth rate vs arrival interval ratio, pairing OFF vs ON.
+        The y=0 horizontal line is the regime boundary indicator.
+        A vertical reference line marks the Study 1 boundary (~ratio 6.0)
+        to show where the OFF curve crosses into unbounded territory —
+        and the ON curve never does.
+
+    Figure 4.4 — Customer-Facing Performance
+        Mean assignment time vs arrival interval ratio, pairing OFF vs ON.
+        No shading — the widening gap between curves is the story.
+
+DATA SOURCE:
+    metrics_data — built in Cell 16. Each row has:
+        'ratio', 'pairing_condition' ('no_pairing' or 'pairing'),
+        'growth_rate_estimate', 'growth_rate_ci_width',
+        'mom_estimate', 'mom_ci_width'
+"""
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+print("\n" + "="*80)
+print("SLIDE 6 FIGURE PRODUCTION")
+print("="*80)
+
+# ============================================================================
+# STEP 1: SEPARATE DATA BY PAIRING CONDITION
+# ============================================================================
+ratios_all = sorted(set(r['ratio'] for r in metrics_data))
+
+no_pairing_data = {r: None for r in ratios_all}
+pairing_data    = {r: None for r in ratios_all}
+
+for row in metrics_data:
+    if row['pairing_condition'] == 'no_pairing':
+        no_pairing_data[row['ratio']] = row
+    else:
+        pairing_data[row['ratio']] = row
+
+def extract_metrics(data_dict):
+    ratios_list = sorted(k for k, v in data_dict.items() if v is not None)
+    return {
+        'ratios':          ratios_list,
+        'growth_rate':     [data_dict[r]['growth_rate_estimate'] for r in ratios_list],
+        'growth_rate_err': [data_dict[r]['growth_rate_ci_width']  for r in ratios_list],
+        'assignment_time': [data_dict[r]['mom_estimate']           for r in ratios_list],
+        'assignment_err':  [data_dict[r]['mom_ci_width']           for r in ratios_list],
+    }
+
+off_m = extract_metrics(no_pairing_data)
+on_m  = extract_metrics(pairing_data)
+
+print(f"Pairing OFF — {len(off_m['ratios'])} ratio points: {off_m['ratios']}")
+print(f"Pairing ON  — {len(on_m['ratios'])}  ratio points: {on_m['ratios']}")
+
+# ============================================================================
+# STEP 2: SHARED STYLE CONSTANTS
+# ============================================================================
+COLOR_OFF = '#E63946'   # red  — pairing OFF
+COLOR_ON  = '#2A9D8F'   # teal — pairing ON
+
+X_MIN, X_MAX = 3.25, 8.25
+
+# Study 1 regime boundary: the ratio where the OFF curve crosses y=0.
+# From Study 1 results this sits between 5.5 and 6.0; use 6.0 as the
+# reference line so the label reads "Study 1 boundary (pairing OFF)".
+STUDY1_BOUNDARY = 6.0
+
+# ============================================================================
+# FIGURE 4.3 — GROWTH RATE VS RATIO (REGIME BOUNDARY SHIFT)
+# ============================================================================
+fig1, ax1 = plt.subplots(figsize=(10, 6))
+
+ax1.errorbar(off_m['ratios'], off_m['growth_rate'],
+             yerr=off_m['growth_rate_err'],
+             marker='s', linewidth=2, markersize=8, capsize=5,
+             label='Pairing OFF', color=COLOR_OFF, linestyle='--', zorder=3)
+
+ax1.errorbar(on_m['ratios'], on_m['growth_rate'],
+             yerr=on_m['growth_rate_err'],
+             marker='o', linewidth=2, markersize=8, capsize=5,
+             label='Pairing ON', color=COLOR_ON, linestyle='-', zorder=3)
+
+# Regime boundary: y = 0
+ax1.axhline(y=0, color='black', linestyle=':', linewidth=1.5, alpha=0.7,
+            label='Regime boundary (growth = 0)')
+
+
+
+ax1.set_xlabel('Arrival Interval Ratio (driver/order)', fontsize=12, fontweight='bold')
+ax1.set_ylabel('Growth Rate (entities/min)', fontsize=12, fontweight='bold')
+ax1.set_title('Figure 4.3: Regime Boundary Shift', fontsize=14, fontweight='bold', pad=15)
+ax1.legend(loc='upper left', fontsize=11)
+ax1.grid(True, alpha=0.3, linestyle='--')
+ax1.set_xlim([X_MIN, X_MAX])
+
+plt.tight_layout()
+plt.show()
+print("✓ Figure 4.3 rendered")
+
+# ============================================================================
+# FIGURE 4.4 — ASSIGNMENT TIME VS RATIO (CUSTOMER-FACING PERFORMANCE)
+# ============================================================================
+fig2, ax2 = plt.subplots(figsize=(10, 6))
+
+ax2.errorbar(off_m['ratios'], off_m['assignment_time'],
+             yerr=off_m['assignment_err'],
+             marker='s', linewidth=2, markersize=8, capsize=5,
+             label='Pairing OFF', color=COLOR_OFF, linestyle='--', zorder=3)
+
+ax2.errorbar(on_m['ratios'], on_m['assignment_time'],
+             yerr=on_m['assignment_err'],
+             marker='o', linewidth=2, markersize=8, capsize=5,
+             label='Pairing ON', color=COLOR_ON, linestyle='-', zorder=3)
+
+ax2.set_xlabel('Arrival Interval Ratio (driver/order)', fontsize=12, fontweight='bold')
+ax2.set_ylabel('Mean Assignment Time (min)', fontsize=12, fontweight='bold')
+ax2.set_title('Figure 4.4: Assignment Time: Customer-Facing Performance',
+              fontsize=14, fontweight='bold', pad=15)
+ax2.legend(loc='upper left', fontsize=11)
+ax2.grid(True, alpha=0.3, linestyle='--')
+ax2.set_xlim([X_MIN, X_MAX])
+ax2.set_ylim(bottom=0)
+
+plt.tight_layout()
+plt.show()
+print("✓ Figure 4.4 rendered")
+
+# ============================================================================
+# STEP 3: SANITY PRINT — absolute and relative improvement at each ratio
+# ============================================================================
+print("\n📊 PAIRING BENEFIT SUMMARY")
+print("-"*60)
+print(f"  {'Ratio':>6}  {'OFF (min)':>10}  {'ON (min)':>9}  {'Δ (min)':>9}  {'Δ (%)':>7}")
+print("-"*60)
+
+for r in off_m['ratios']:
+    if pairing_data[r] is not None:
+        off_val = no_pairing_data[r]['mom_estimate']
+        on_val  = pairing_data[r]['mom_estimate']
+        delta   = off_val - on_val
+        pct     = (delta / off_val * 100) if off_val > 0 else 0
+        print(f"  {r:>6.1f}  {off_val:>10.2f}  {on_val:>9.2f}  {delta:>9.2f}  {pct:>6.1f}%")
+
+print("-"*60)
+print("✓ Sanity check complete")
+# %% SLIDE 7 — INFRASTRUCTURE FACTOR SYNTHESIS CHART
+"""
+PURPOSE:
+    Figure 4.5 for Slide 7 (Studies 3–5 — Infrastructure Factor Effects).
+    Horizontal bar chart comparing effect magnitudes of three infrastructure
+    factors, with pairing OFF and ON shown as paired bars.
+
+EFFECT MAGNITUDE DEFINITION:
+    Range of assignment time (max − min) across factor levels at ratio 5.0.
+    Ratio 5.0 chosen because:
+      - It is the only ratio present in all three study datasets
+      - It sits in the critical regime where effects become meaningful
+      - It avoids unbounded-regime survivorship bias present at ratio 7.0
+
+DATA SOURCE (hardcoded from provided result tables):
+
+    Study 3 — Spatial Arrangement (ratio 5.0, assignment time mean)
+        Pairing OFF:  Seed 42 = 9.20,  Seed 100 = 9.30,  Seed 200 = 16.69
+        Pairing ON:   Seed 42 = 2.28,  Seed 100 = 2.46,  Seed 200 = 2.92
+
+    Study 4 — Restaurant Count (ratio 5.0, assignment time mean)
+        Pairing OFF:  Count 5  = 10.77, Count 10 = 9.20,  Count 15 = 7.72
+        Pairing ON:   Count 5  = 2.11,  Count 10 = 2.28,  Count 15 = 2.14
+
+    Study 5 — Delivery Area Size (ratio 5.0, assignment time mean)
+        Pairing OFF:  5×5 km = 0.13,  10×10 km = 9.20,  15×15 km = 25.38
+        Pairing ON:   5×5 km = 0.07,  10×10 km = 2.28,  15×15 km = 14.96
+
+COLORS: match Slides 5 & 6 (pairing OFF = red, pairing ON = teal)
+"""
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+# ============================================================================
+# STEP 1: RAW DATA FROM RESULT TABLES
+# ============================================================================
+layout_off = [9.20, 9.30, 16.69]   # seeds 42, 100, 200
+layout_on  = [2.28, 2.46,  2.92]
+
+count_off  = [10.77, 9.20, 7.72]   # restaurant counts 5, 10, 15
+count_on   = [ 2.11, 2.28, 2.14]
+
+area_off   = [ 0.13, 9.20, 25.38]  # area sizes 5×5, 10×10, 15×15 km
+area_on    = [ 0.07, 2.28, 14.96]
+
+# ============================================================================
+# STEP 2: COMPUTE EFFECT MAGNITUDES (max − min)
+# ============================================================================
+def effect_range(values):
+    return max(values) - min(values)
+
+off_effects = [
+    effect_range(area_off),     # Study 5
+    effect_range(count_off),    # Study 4
+    effect_range(layout_off),   # Study 3
+]
+
+on_effects = [
+    effect_range(area_on),      # Study 5
+    effect_range(count_on),     # Study 4
+    effect_range(layout_on),    # Study 3
+]
+
+# Sanity print
+labels = ['Area Size\n(Study 5)', 'Restaurant Count\n(Study 4)', 'Spatial Arrangement\n(Study 3)']
+print("📊 EFFECT MAGNITUDES (max − min assignment time at ratio 5.0)")
+print("-"*55)
+for lbl, off, on in zip(labels, off_effects, on_effects):
+    print(f"  {lbl.replace(chr(10), ' '):<35}  OFF: {off:5.2f} min   ON: {on:5.2f} min")
+print("-"*55)
+
+# ============================================================================
+# STEP 3: HORIZONTAL BAR CHART
+# ============================================================================
+COLOR_OFF = '#E63946'   # red  — pairing OFF  (matches slides 5 & 6)
+COLOR_ON  = '#2A9D8F'   # teal — pairing ON
+
+fig, ax = plt.subplots(figsize=(10, 5))
+
+y = np.arange(len(labels))
+bar_h = 0.32
+
+bars_off = ax.barh(y + bar_h / 2, off_effects, bar_h,
+                   label='Pairing OFF', color=COLOR_OFF, alpha=0.85, zorder=3)
+bars_on  = ax.barh(y - bar_h / 2, on_effects,  bar_h,
+                   label='Pairing ON',  color=COLOR_ON,  alpha=0.85, zorder=3)
+
+# Value labels on bar ends
+for bar, val in zip(bars_off, off_effects):
+    ax.text(bar.get_width() + 0.4, bar.get_y() + bar.get_height() / 2,
+            f'{val:.1f} min', va='center', ha='left', fontsize=10.5, color='black')
+
+for bar, val in zip(bars_on, on_effects):
+    ax.text(bar.get_width() + 0.4, bar.get_y() + bar.get_height() / 2,
+            f'{val:.1f} min', va='center', ha='left', fontsize=10.5, color='black')
+
+ax.set_yticks(y)
+ax.set_yticklabels(labels, fontsize=11)
+ax.set_xlabel('Assignment Time Range  max − min across factor levels  (min)',
+              fontsize=11, fontweight='bold')
+ax.set_title('Figure 4.5: Infrastructure Factor Effect Magnitudes  (ratio 5.0)',
+             fontsize=13, fontweight='bold', pad=12)
+ax.legend(fontsize=11, loc='lower right')
+ax.grid(True, axis='x', alpha=0.3, linestyle='--')
+ax.set_xlim([0, 32])   # extra room for value labels
+
+plt.tight_layout()
+plt.show()
+print("✓ Figure 4.5 rendered")
+
 # %%

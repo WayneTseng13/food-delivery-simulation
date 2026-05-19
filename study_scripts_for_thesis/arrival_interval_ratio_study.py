@@ -613,7 +613,7 @@ for row in metrics_data:
 
 print("="*230)
 
-# %% AD HOC VISUALIZAION CELL
+# %% AD HOC VISUALIZAYION CELL
 """
 VISUALIZATION OBJECTIVE: Test the hypothesis that "Arrival interval ratio determines 
 which regime the system is in (qualitative behavior), but absolute intensity determines 
@@ -651,7 +651,7 @@ def extract_metrics(data_dict):
     growth_rate_err = [data_dict[r]['growth_rate_ci_width'] for r in ratios_list]
     assignment_time = [data_dict[r]['mom_estimate'] for r in ratios_list]
     assignment_time_err = [data_dict[r]['mom_ci_width'] for r in ratios_list]
-    
+
     return {
         'ratios': ratios_list,
         'growth_rate': growth_rate,
@@ -663,41 +663,67 @@ def extract_metrics(data_dict):
 baseline_metrics = extract_metrics(baseline_data)
 baseline_2x_metrics = extract_metrics(baseline_2x_data)
 
+# Shared x-axis tick configuration — all 0.5 increments
+x_ticks = [2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0]
+
+# Regime zone boundaries
+# Bounded:     ratio <= 5.5  → shade 2.25 to 5.75
+# Transitional: 6.0–6.5     → shade 5.75 to 6.75
+# Unbounded:   ratio >= 7.0  → shade 6.75 to 7.25
+BOUNDED_END    = 5.75
+TRANS_END      = 6.75
+X_LEFT         = 2.25
+X_RIGHT        = 7.25
+
 # ============================================================================
 # PLOT 1: Growth Rate vs Ratio (Regime Boundary Identification)
 # ============================================================================
-plt.figure(figsize=(10, 6))
+fig1, ax1 = plt.subplots(figsize=(10, 6))
 
-# Plot baseline
-plt.errorbar(baseline_metrics['ratios'], baseline_metrics['growth_rate'], 
+# --- Regime zone shading (draw first so data sits on top) ---
+ax1.axvspan(X_LEFT,      BOUNDED_END, alpha=0.08, color='green',  label='_nolegend_')
+ax1.axvspan(BOUNDED_END, TRANS_END,   alpha=0.12, color='orange', label='_nolegend_')
+ax1.axvspan(TRANS_END,   X_RIGHT,     alpha=0.10, color='red',    label='_nolegend_')
+
+# --- Data series ---
+ax1.errorbar(baseline_metrics['ratios'], baseline_metrics['growth_rate'],
              yerr=baseline_metrics['growth_rate_err'],
              marker='o', linewidth=2, markersize=8, capsize=5,
              label='Baseline (higher intensity)', color='#2E86AB', linestyle='-')
 
-# Plot 2x baseline
-plt.errorbar(baseline_2x_metrics['ratios'], baseline_2x_metrics['growth_rate'],
+ax1.errorbar(baseline_2x_metrics['ratios'], baseline_2x_metrics['growth_rate'],
              yerr=baseline_2x_metrics['growth_rate_err'],
              marker='s', linewidth=2, markersize=8, capsize=5,
              label='2× Baseline (half intensity)', color='#A23B72', linestyle='--')
 
-# Add horizontal line at y=0 (regime boundary)
-plt.axhline(y=0, color='black', linestyle=':', linewidth=1.5, alpha=0.7, label='Regime boundary (growth=0)')
+# --- Regime boundary reference line ---
+ax1.axhline(y=0, color='black', linestyle=':', linewidth=1.5, alpha=0.7,
+            label='Regime boundary (growth=0)')
 
-plt.xlabel('Arrival Interval Ratio (driver/order)', fontsize=12, fontweight='bold')
-plt.ylabel('Growth Rate (entities/min)', fontsize=12, fontweight='bold')
-plt.title('Plot 1: Regime Boundary Identification', fontsize=14, fontweight='bold', pad=15)
-plt.legend(loc='upper left', fontsize=11)
-plt.grid(True, alpha=0.3, linestyle='--')
-plt.xlim([2.25, 7.25])
+# --- Regime zone labels ---
+y_top = ax1.get_ylim()[1]
+label_y = 0.93  # axes-fraction position for labels
+ax1.text(0.22, label_y, 'Bounded\nRegime',
+         transform=ax1.transAxes, ha='center', va='top',
+         fontsize=10, style='italic',
+         bbox=dict(boxstyle='round,pad=0.4', facecolor='green', alpha=0.15))
+ax1.text(0.73, label_y, 'Transitional\nRegime',
+         transform=ax1.transAxes, ha='center', va='top',
+         fontsize=10, style='italic',
+         bbox=dict(boxstyle='round,pad=0.4', facecolor='orange', alpha=0.20))
+ax1.text(0.94, label_y, 'Unbounded\nRegime',
+         transform=ax1.transAxes, ha='center', va='top',
+         fontsize=10, style='italic',
+         bbox=dict(boxstyle='round,pad=0.4', facecolor='red', alpha=0.15))
 
-# Add regime labels
-y_top = plt.gca().get_ylim()[1]
-plt.text(3.0, y_top*0.9, 'Stable\nRegime', 
-         ha='center', va='top', fontsize=10, style='italic', 
-         bbox=dict(boxstyle='round,pad=0.5', facecolor='lightgreen', alpha=0.3))
-plt.text(6.0, y_top*0.9, 'Deteriorating\nRegime', 
-         ha='center', va='top', fontsize=10, style='italic',
-         bbox=dict(boxstyle='round,pad=0.5', facecolor='lightcoral', alpha=0.3))
+# --- Axes formatting ---
+ax1.set_xlabel('Arrival Interval Ratio (driver/order)', fontsize=12, fontweight='bold')
+ax1.set_ylabel('Growth Rate (entities/min)', fontsize=12, fontweight='bold')
+ax1.set_title('Plot 1: Regime Boundary Identification', fontsize=14, fontweight='bold', pad=15)
+ax1.legend(loc='upper left', fontsize=11)
+ax1.grid(True, alpha=0.3, linestyle='--')
+ax1.set_xlim([X_LEFT, X_RIGHT])
+ax1.set_xticks(x_ticks)
 
 plt.tight_layout()
 plt.show()
@@ -705,31 +731,36 @@ plt.show()
 # ============================================================================
 # PLOT 4: Assignment Time Comparison - LINEAR SCALE
 # ============================================================================
-plt.figure(figsize=(10, 6))
+fig4, ax4 = plt.subplots(figsize=(10, 6))
 
-# Plot baseline
-plt.errorbar(baseline_metrics['ratios'], baseline_metrics['assignment_time'],
+# --- Regime zone shading ---
+ax4.axvspan(X_LEFT,      BOUNDED_END, alpha=0.08, color='green',  label='_nolegend_')
+ax4.axvspan(BOUNDED_END, TRANS_END,   alpha=0.12, color='orange', label='_nolegend_')
+ax4.axvspan(TRANS_END,   X_RIGHT,     alpha=0.10, color='red',    label='_nolegend_')
+
+# --- Data series ---
+ax4.errorbar(baseline_metrics['ratios'], baseline_metrics['assignment_time'],
              yerr=baseline_metrics['assignment_time_err'],
              marker='o', linewidth=2, markersize=8, capsize=5,
              label='Baseline (higher intensity)', color='#17BEBB', linestyle='-')
 
-# Plot 2x baseline
-plt.errorbar(baseline_2x_metrics['ratios'], baseline_2x_metrics['assignment_time'],
+ax4.errorbar(baseline_2x_metrics['ratios'], baseline_2x_metrics['assignment_time'],
              yerr=baseline_2x_metrics['assignment_time_err'],
              marker='s', linewidth=2, markersize=8, capsize=5,
              label='2× Baseline (half intensity)', color='#9B59B6', linestyle='--')
 
-plt.xlabel('Arrival Interval Ratio (driver/order)', fontsize=12, fontweight='bold')
-plt.ylabel('Mean Assignment Time (min)', fontsize=12, fontweight='bold')
-plt.title('Assignment Time: Customer-Facing Performance', fontsize=14, fontweight='bold', pad=15)
-plt.legend(loc='upper left', fontsize=11)
-plt.grid(True, alpha=0.3, linestyle='--')
-plt.xlim([2.25, 7.25])
-plt.ylim([0, 50])  # Linear scale from 0 to 50 minutes
+# --- Axes formatting ---
+ax4.set_xlabel('Arrival Interval Ratio (driver/order)', fontsize=12, fontweight='bold')
+ax4.set_ylabel('Mean Assignment Time (min)', fontsize=12, fontweight='bold')
+ax4.set_title('Assignment Time: Customer-Facing Performance', fontsize=14, fontweight='bold', pad=15)
+ax4.legend(loc='upper left', fontsize=11)
+ax4.grid(True, alpha=0.3, linestyle='--')
+ax4.set_xlim([X_LEFT, X_RIGHT])
+ax4.set_ylim([0, 50])
+ax4.set_xticks(x_ticks)
 
 plt.tight_layout()
 plt.show()
-
 
 # %% CELL AD HOC: Pooling Mechanism Visualization — Idle Drivers Over Time
 """
