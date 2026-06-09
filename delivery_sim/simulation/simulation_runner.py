@@ -33,6 +33,7 @@ from delivery_sim.system_data.system_data_collector import SystemDataCollector
 from delivery_sim.system_data.system_snapshot_repository import SystemSnapshotRepository
 from delivery_sim.utils.priority_scoring import PriorityScorer
 from delivery_sim.event_collectors.collector_registry import EventCollectorRegistry
+from delivery_sim.utils.curation_policy import UniformPolicy, ProximityCurationPolicy
 
 class SimulationRunner:
     """
@@ -211,19 +212,37 @@ class SimulationRunner:
     def _create_services(self):
         """Create services that connect infrastructure to variant environment."""
         self.logger.debug("Creating services...")
-        
+
+        # Create curation policy based on operational config
+        restaurant_selection_stream = self.operational_rng.get_stream('restaurant_selection')
+
+        if self.config.curation_policy == 'proximity':
+            curation_policy = ProximityCurationPolicy(
+                restaurant_repository=self.restaurant_repository,
+                driver_repository=self.driver_repository,
+                restaurant_selection_stream=restaurant_selection_stream
+            )
+        else:
+            curation_policy = UniformPolicy(
+                restaurant_repository=self.restaurant_repository,
+                restaurant_selection_stream=restaurant_selection_stream
+            )
+
+        self.logger.info(f"Curation policy: {type(curation_policy).__name__}")
+
         # Create core services
         services = {
             'order_arrival': OrderArrivalService(
                 env=self.env,
                 event_dispatcher=self.event_dispatcher,
                 order_repository=self.order_repository,
-                restaurant_repository=self.restaurant_repository,  # Reuse from infrastructure!
+                restaurant_repository=self.restaurant_repository,
                 config=self.config,
                 id_generator=self.id_generators['order'],
-                operational_rng_manager=self.operational_rng
+                operational_rng_manager=self.operational_rng,
+                curation_policy=curation_policy                    # NEW
             ),
-            
+
             'driver_arrival': DriverArrivalService(
                 env=self.env,
                 event_dispatcher=self.event_dispatcher,
@@ -232,13 +251,13 @@ class SimulationRunner:
                 id_generator=self.id_generators['driver'],
                 operational_rng_manager=self.operational_rng
             ),
-            
+
             'driver_scheduling': DriverSchedulingService(
                 env=self.env,
                 event_dispatcher=self.event_dispatcher,
                 driver_repository=self.driver_repository
             ),
-            
+
             'assignment': AssignmentService(
                 env=self.env,
                 event_dispatcher=self.event_dispatcher,
@@ -246,10 +265,10 @@ class SimulationRunner:
                 driver_repository=self.driver_repository,
                 pair_repository=self.pair_repository,
                 delivery_unit_repository=self.delivery_unit_repository,
-                priority_scorer=self.priority_scorer,  # Uses infrastructure analysis!
+                priority_scorer=self.priority_scorer,
                 config=self.config
             ),
-            
+
             'delivery': DeliveryService(
                 env=self.env,
                 event_dispatcher=self.event_dispatcher,
@@ -257,11 +276,11 @@ class SimulationRunner:
                 order_repository=self.order_repository,
                 pair_repository=self.pair_repository,
                 delivery_unit_repository=self.delivery_unit_repository,
-                restaurant_repository=self.restaurant_repository,  # Reuse from infrastructure!
+                restaurant_repository=self.restaurant_repository,
                 config=self.config
             )
         }
-        
+
         # Create pairing service if enabled
         if self.config.pairing_enabled:
             services['pairing'] = PairingService(
@@ -271,11 +290,9 @@ class SimulationRunner:
                 pair_repository=self.pair_repository,
                 config=self.config
             )
-        
-        # Store services for easy access
+
         self.services = services
-        
-        # Log services created
+
         pairing_status = "with pairing" if self.config.pairing_enabled else "without pairing"
         self.logger.info(f"Initialized {len(services)} services {pairing_status}")
     

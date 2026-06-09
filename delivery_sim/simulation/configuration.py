@@ -24,49 +24,54 @@ class StructuralConfig:
     
 class OperationalConfig:
     """Configuration for dynamic operational elements of the simulation."""
-    
-    def __init__(self, 
+
+    def __init__(self,
                  # Arrival intervals (minutes)
-                 mean_order_inter_arrival_time,    # minutes between orders
-                 mean_driver_inter_arrival_time,   # minutes between drivers
-                 
+                 mean_order_inter_arrival_time,
+                 mean_driver_inter_arrival_time,
+
                  # Pairing configuration
                  pairing_enabled,
                  restaurants_proximity_threshold,  # km
                  customers_proximity_threshold,    # km
-                 
+
                  # Driver service configuration
                  mean_service_duration,            # minutes
                  service_duration_std_dev,         # minutes
                  min_service_duration,             # minutes
                  max_service_duration,             # minutes
-                 ):               
+
+                 # Curation policy                              # NEW
+                 curation_policy='uniform',        # 'uniform' or 'proximity'
+                 ):
 
         # Arrival process parameters
         self.mean_order_inter_arrival_time = mean_order_inter_arrival_time
         self.mean_driver_inter_arrival_time = mean_driver_inter_arrival_time
-        
+
         # Pairing configuration
         self.pairing_enabled = pairing_enabled
         self.restaurants_proximity_threshold = restaurants_proximity_threshold
         self.customers_proximity_threshold = customers_proximity_threshold
-        
+
         # Driver service duration parameters
         self.mean_service_duration = mean_service_duration
         self.service_duration_std_dev = service_duration_std_dev
         self.min_service_duration = min_service_duration
         self.max_service_duration = max_service_duration
 
+        # Curation policy                                       # NEW
+        self.curation_policy = curation_policy                 # NEW
+
     def __str__(self):
-        """String representation for debugging and logging."""
         return (f"OperationalConfig("
                 f"order_interval={self.mean_order_inter_arrival_time}min, "
                 f"driver_interval={self.mean_driver_inter_arrival_time}min, "
                 f"pairing={'on' if self.pairing_enabled else 'off'}, "
                 f"restaurants_threshold={self.restaurants_proximity_threshold}km, "
                 f"customers_threshold={self.customers_proximity_threshold}km, "
-                f"service_duration={self.mean_service_duration}±{self.service_duration_std_dev}min)")
-
+                f"service_duration={self.mean_service_duration}±{self.service_duration_std_dev}min, "
+                f"curation={self.curation_policy})")             # NEW
 
 class ExperimentConfig:
     def __init__(self, simulation_duration, num_replications, operational_master_seed, 
