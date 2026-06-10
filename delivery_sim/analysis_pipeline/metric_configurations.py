@@ -192,7 +192,36 @@ METRIC_CONFIGURATIONS = {
             }
         ],
         'description': 'Queue dynamics metrics (growth rate, average queue size, trend analysis)'
+    },
+    
+    # ==========================================================================
+    # ONE-LEVEL PATTERN: CURATION METRICS
+    # ==========================================================================
+    # Characteristics:
+    # - Derived from order.curation_result attribute, stamped at arrival time
+    # - Warmup filtering inherited from cohort_orders (arrival_time >= warmup_period)
+    # - Returns scalar directly (no entity iteration or aggregation at this phase)
+    # - Only meaningful when ProximityCurationPolicy is active; returns 0.0 for
+    #   UniformPolicy runs (curation_result = None on all orders)
+    #
+    # Fallback rate: fraction of curation attempts where no idle drivers existed,
+    # characterising how often the R-D signal was actually operative per regime.
+
+    'curation_metrics': {
+        'aggregation_pattern': 'one_level',
+        'metric_module': 'delivery_sim.metrics.system.curation_metrics',
+        'metric_function': 'calculate_all_curation_metrics',
+        'data_key': None,
+        'ci_config': [
+            {
+                'metric_name': 'curation_fallback_rate',
+                'target_statistic': 'mean',
+                'construct_ci': True
+            }
+        ],
+        'description': 'R-D curation operating envelope metrics'
     }
+
 }
 
 # ==============================================================================

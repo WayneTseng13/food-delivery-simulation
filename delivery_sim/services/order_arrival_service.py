@@ -66,7 +66,7 @@ class OrderArrivalService:
             yield self.env.timeout(inter_arrival_time)
 
             order_id = self.id_generator.next()
-            restaurant_location = self._select_restaurant_location()
+            restaurant_location, curation_result = self._select_restaurant_location()
             customer_location = self._generate_customer_location()
 
             self.logger.debug(
@@ -79,7 +79,8 @@ class OrderArrivalService:
                 order_id=order_id,
                 restaurant_location=restaurant_location,
                 customer_location=customer_location,
-                arrival_time=self.env.now
+                arrival_time=self.env.now,
+                curation_result=curation_result
             )
 
             self.order_repository.add(new_order)
@@ -106,14 +107,21 @@ class OrderArrivalService:
         return self.arrival_stream.exponential(self.config.mean_order_inter_arrival_time)
 
     def _select_restaurant_location(self):
-        """Select a restaurant location for a new order via the active curation policy."""
-        selected_restaurant = self.curation_policy.select()
+        """
+        Select a restaurant location for a new order via the active curation policy.
+
+        Returns:
+            tuple: (location, curation_result)
+                   curation_result is None (uniform), 'curated', or 'fallback'.
+        """
+        selected_restaurant, curation_result = self.curation_policy.select()
         self.logger.debug(
             f"[t={self.env.now:.2f}] Selected restaurant "
             f"{selected_restaurant.restaurant_id} "
-            f"at {format_location(selected_restaurant.location)}"
+            f"at {format_location(selected_restaurant.location)} "
+            f"(curation={curation_result})"
         )
-        return selected_restaurant.location
+        return selected_restaurant.location, curation_result
 
     def _generate_customer_location(self):
         """Generate a customer location for a new order."""

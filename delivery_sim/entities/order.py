@@ -11,30 +11,35 @@ class Order:
     all necessary information about an individual order.
     """
     
-    def __init__(self, order_id, restaurant_location, customer_location, arrival_time):
+    def __init__(self, order_id, restaurant_location, customer_location,
+                arrival_time, curation_result=None):
         """Initialize a new order with its basic properties."""
-        # Get a logger instance
         self.logger = get_logger("entities.order")
-        
+
         # Basic properties
         self.order_id = order_id
         self.entity_type = EntityType.ORDER
         self.restaurant_location = restaurant_location
         self.customer_location = customer_location
         self.arrival_time = arrival_time
-        
-        # State and relationships (initially None)
+
+        # Curation metadata — records how this order's restaurant was selected.
+        # None:       UniformPolicy was active (curation not applicable)
+        # 'curated':  ProximityCurationPolicy selected via R-D proximity
+        # 'fallback': ProximityCurationPolicy fell back to random (no idle drivers)
+        self.curation_result = curation_result
+
+        # State and relationships
         self.state = OrderState.CREATED
-        self.pair = None  # Reference to a Pair if this order becomes paired
-        self.delivery_unit = None  # Reference to DeliveryUnit once assigned
-        
+        self.pair = None
+        self.delivery_unit = None
+
         # Timing information for lifecycle events
         self.pair_time = None
         self.assignment_time = None
         self.pickup_time = None
         self.delivery_time = None
-        
-        # Log creation
+
         self.logger.debug(f"Order {order_id} created")
 
     def can_transition_to(self, new_state):
