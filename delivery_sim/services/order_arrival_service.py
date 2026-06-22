@@ -66,8 +66,8 @@ class OrderArrivalService:
             yield self.env.timeout(inter_arrival_time)
 
             order_id = self.id_generator.next()
-            restaurant_location, curation_result = self._select_restaurant_location()
             customer_location = self._generate_customer_location()
+            restaurant_location, curation_result = self._select_restaurant_location(customer_location)
 
             self.logger.debug(
                 f"[t={self.env.now:.2f}] Generated attributes for order {order_id}: "
@@ -106,7 +106,7 @@ class OrderArrivalService:
         """Generate the time until the next order arrival using an exponential distribution."""
         return self.arrival_stream.exponential(self.config.mean_order_inter_arrival_time)
 
-    def _select_restaurant_location(self):
+    def _select_restaurant_location(self, customer_location):
         """
         Select a restaurant location for a new order via the active curation policy.
 
@@ -114,7 +114,8 @@ class OrderArrivalService:
             tuple: (location, curation_result)
                    curation_result is None (uniform), 'curated', or 'fallback'.
         """
-        selected_restaurant, curation_result = self.curation_policy.select()
+        selected_restaurant, curation_result = self.curation_policy.select(customer_location)
+
         self.logger.debug(
             f"[t={self.env.now:.2f}] Selected restaurant "
             f"{selected_restaurant.restaurant_id} "

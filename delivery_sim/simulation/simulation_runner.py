@@ -33,7 +33,7 @@ from delivery_sim.system_data.system_data_collector import SystemDataCollector
 from delivery_sim.system_data.system_snapshot_repository import SystemSnapshotRepository
 from delivery_sim.utils.priority_scoring import PriorityScorer
 from delivery_sim.event_collectors.collector_registry import EventCollectorRegistry
-from delivery_sim.utils.curation_policy import UniformPolicy, ProximityCurationPolicy
+from delivery_sim.utils.curation_policy import UniformPolicy, ProximityCurationPolicy,  StateAdaptiveCurationPolicy
 
 class SimulationRunner:
     """
@@ -221,6 +221,13 @@ class SimulationRunner:
                 restaurant_repository=self.restaurant_repository,
                 driver_repository=self.driver_repository,
                 restaurant_selection_stream=restaurant_selection_stream
+            )
+        elif self.config.curation_policy == 'state_adaptive':
+            curation_policy = StateAdaptiveCurationPolicy(
+                restaurant_repository=self.restaurant_repository,
+                driver_repository=self.driver_repository,
+                order_repository=self.order_repository,
+                config=self.config,
             )
         else:
             curation_policy = UniformPolicy(

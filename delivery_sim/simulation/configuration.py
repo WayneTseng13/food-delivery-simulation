@@ -42,7 +42,7 @@ class OperationalConfig:
                  max_service_duration,             # minutes
 
                  # Curation policy                              # NEW
-                 curation_policy='uniform',        # 'uniform' or 'proximity'
+                 curation_policy='uniform',        # 'uniform' or 'proximity' or 'state_adaptive'
                  ):
 
         # Arrival process parameters
