@@ -30,20 +30,19 @@ class Pair:
         
         # State tracking
         self.state = PairState.CREATED
+        self.picked_up_orders = set()
+        self.delivered_orders = set()
+
         # Partial-info routing hint computed at pairing time.
         # Not used for any operational decision — the binding sequence lives on
         # DeliveryUnit and is determined at assignment with driver position known.
         # Kept for optional post-hoc diagnostic (partial vs complete sequence divergence).
         self.partial_info_sequence = None
         self.partial_info_cost = None
-        
-        # Delivery planning
-        self.optimal_sequence = None  # List of locations in optimal visiting order
-        self.optimal_cost = None      # Total travel distance for optimal sequence
-        
+
         # Relationship tracking
         self.delivery_unit = None
-        
+
         # Log creation
         self.logger.debug(f"Pair {self.pair_id} created at time {creation_time}")
     
