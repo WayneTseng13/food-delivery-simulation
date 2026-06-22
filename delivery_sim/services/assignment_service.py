@@ -26,7 +26,7 @@ from delivery_sim.events.delivery_unit_events import DeliveryUnitAssignedEvent
 from delivery_sim.utils.location_utils import calculate_distance
 from delivery_sim.utils.logging_system import get_logger
 from delivery_sim.utils.entity_type_utils import EntityType
-
+from delivery_sim.utils.route_evaluator import evaluate_complete
 
 class AssignmentService:
     """
@@ -332,7 +332,20 @@ class AssignmentService:
             "num_orders": score_components["num_orders"],
             "assignment_delay_minutes": score_components["assignment_delay_minutes"]
         }
-        
+        # For pairs: write the binding sequence now that the winning driver is known.
+        # This call duplicates the evaluate_complete already done in priority_scoring,
+        # but is cheap (6 sequences × 1 driver) and keeps assignment self-contained.
+        if entity_type == EntityType.PAIR:
+            route_result = evaluate_complete(
+                entity.order1.restaurant_location,
+                entity.order1.customer_location,
+                entity.order2.restaurant_location,
+                entity.order2.customer_location,
+                [driver],
+            )
+            delivery_unit.chosen_sequence = route_result['stops']
+            delivery_unit.chosen_route_cost = route_result['route_cost']   
+             
         # Add to repository
         self.delivery_unit_repository.add(delivery_unit)
         

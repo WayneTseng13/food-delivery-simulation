@@ -2,8 +2,9 @@ from delivery_sim.events.order_events import OrderCreatedEvent
 from delivery_sim.events.pair_events import PairCreatedEvent, PairingFailedEvent
 from delivery_sim.entities.pair import Pair
 from delivery_sim.entities.states import OrderState
-from delivery_sim.utils.location_utils import calculate_distance, locations_are_equal
+from delivery_sim.utils.location_utils import calculate_distance
 from delivery_sim.utils.logging_system import get_logger
+from delivery_sim.utils.route_evaluator import evaluate_partial
 
 class PairingService:
     """
@@ -163,8 +164,8 @@ class PairingService:
         """
         # Create the pair entity
         pair = Pair(order1, order2, self.env.now)
-        pair.optimal_sequence = sequence
-        pair.optimal_cost = cost
+        pair.partial_info_sequence = sequence
+        pair.partial_info_cost = cost
         
         # Add to repository
         self.pair_repository.add(pair)
@@ -197,84 +198,25 @@ class PairingService:
     
     def evaluate_sequences(self, order1, order2):
         """
-        Evaluate all possible delivery sequences for a pair of orders.
-        
-        Args:
-            order1: First order to evaluate
-            order2: Second order to evaluate
-            
-        Returns:
-            tuple: (best_sequence, best_cost) for the optimal delivery sequence
+        Evaluate all valid delivery sequences for a pair of orders.
+
+        Delegates to route_evaluator.evaluate_partial which enumerates all 6
+        valid sequences (4 batched + 2 interleaved) and handles same-restaurant
+        deduplication. Returns the best route by minimum route cost.
         """
-
-        # Detailed sequence evaluation - log with simulation time
-        self.logger.debug(f"[t={self.env.now:.2f}] Evaluating delivery sequences for orders {order1.order_id} and {order2.order_id}")
-
-        sequences = []
-        same_restaurant = locations_are_equal(
-            order1.restaurant_location, 
-            order2.restaurant_location
+        self.logger.debug(
+            f"[t={self.env.now:.2f}] Evaluating delivery sequences for orders "
+            f"{order1.order_id} and {order2.order_id}"
         )
-
-        if not same_restaurant:
-            # Different restaurants - consider all possible sequences
-            sequences.append([
-                order1.restaurant_location, order2.restaurant_location, 
-                order1.customer_location, order2.customer_location
-            ])
-            sequences.append([
-                order1.restaurant_location, order2.restaurant_location, 
-                order2.customer_location, order1.customer_location
-            ])
-            sequences.append([
-                order2.restaurant_location, order1.restaurant_location, 
-                order1.customer_location, order2.customer_location
-            ])
-            sequences.append([
-                order2.restaurant_location, order1.restaurant_location, 
-                order2.customer_location, order1.customer_location
-            ])
-        else:
-            # Same restaurant - only need to determine customer visit order
-            sequences.append([
-                order1.restaurant_location,
-                order1.customer_location, 
-                order2.customer_location
-            ])
-            sequences.append([
-                order1.restaurant_location,
-                order2.customer_location, 
-                order1.customer_location
-            ])
-        
-        best_cost = float('inf')
-        best_sequence = None
-        
-        for seq in sequences:
-            cost = self.calculate_travel_distance(seq)
-            if cost < best_cost:
-                best_cost = cost
-                best_sequence = seq
-
-        # Log sequence selection with simulation time
-        self.logger.debug(f"[t={self.env.now:.2f}] Selected best sequence with cost {best_cost:.2f}")
-                
-        return best_sequence, best_cost
+        result = evaluate_partial(
+            order1.restaurant_location, order1.customer_location,
+            order2.restaurant_location, order2.customer_location,
+        )
+        self.logger.debug(
+            f"[t={self.env.now:.2f}] Selected best sequence with cost {result['route_cost']:.2f}"
+        )
+        return result['stops'], result['route_cost']
     
-    def calculate_travel_distance(self, sequence):
-        """
-        Calculate total travel distance for a delivery sequence.
-        
-        Args:
-            sequence: List of locations to visit in order
-            
-        Returns:
-            float: Total distance to travel the sequence
-        """
-        total_distance = 0.0
-        for i in range(len(sequence) - 1):
-            total_distance += calculate_distance(sequence[i], sequence[i + 1])
-        return total_distance
     
     def _check_proximity_constraints(self, order1, order2):
         """

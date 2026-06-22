@@ -55,6 +55,12 @@ class DeliveryUnit:
             "num_orders": None,            # Number of orders in this delivery
             "assignment_delay_minutes": None      # Wait time for this assignment
         }
+
+        # Binding delivery sequence for pair units. Written by AssignmentService
+        # using evaluate_complete (driver position known at that point).
+        # Stays None for single-order delivery units.
+        self.chosen_sequence = None
+        self.chosen_route_cost = None
         
         # Log creation
         self.logger.debug(f"DeliveryUnit {self.unit_id} created at time {assignment_time}")

@@ -204,15 +204,15 @@ class DeliveryService:
         current_location = driver.location
         
         # Log the delivery sequence
-        sequence_description = self._generate_sequence_description(pair.optimal_sequence)
+        sequence_description = self._generate_sequence_description(delivery_unit.chosen_sequence)
         self.logger.debug(f"[t={self.env.now:.2f}] Following delivery sequence for pair {pair.pair_id}: {sequence_description}")
         
         # Follow the optimal sequence determined during pair formation
-        for i, stop in enumerate(pair.optimal_sequence):
+        for i, stop in enumerate(delivery_unit.chosen_sequence):
             # Travel to the next stop
             travel_time = self._calculate_travel_time(current_location, stop)
             next_stop_index = i + 1
-            self.logger.debug(f"[t={self.env.now:.2f}] Driver {driver.driver_id} traveling to stop {i+1}/{len(pair.optimal_sequence)} " 
+            self.logger.debug(f"[t={self.env.now:.2f}] Driver {driver.driver_id} traveling to stop {i+1}/{len(delivery_unit.chosen_sequence)} " 
                               f"for pair {pair.pair_id}, ETA: {self.env.now + travel_time:.2f}")
             yield self.env.timeout(travel_time)
             

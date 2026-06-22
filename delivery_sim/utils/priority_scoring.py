@@ -15,6 +15,7 @@ import numpy as np
 from delivery_sim.utils.location_utils import calculate_distance
 from delivery_sim.utils.entity_type_utils import EntityType
 from delivery_sim.utils.logging_system import get_logger
+from delivery_sim.utils.route_evaluator import evaluate_complete
 
 
 class PriorityScorer:
@@ -185,13 +186,21 @@ class PriorityScorer:
             float: Total travel distance in km
         """
         if entity.entity_type == EntityType.PAIR:
-            # Use pre-calculated optimal sequence and cost from pairing service
-            # Driver travels to first location in the optimal sequence, then follows the pre-optimized path
-            distance_to_first_location = calculate_distance(driver.location, entity.optimal_sequence[0])
-            total_distance = distance_to_first_location + entity.optimal_cost
-            
-            self.logger.debug(f"Pair {entity.pair_id}: driver_to_first={distance_to_first_location:.3f}km + optimal_cost={entity.optimal_cost:.3f}km = {total_distance:.3f}km")
-            return total_distance
+                    # evaluate_complete jointly selects the best sequence and accounts for
+                    # driver position. This is what assignment will also do, so priority
+                    # scoring and assignment are aligned by construction.
+                    result = evaluate_complete(
+                        entity.order1.restaurant_location,
+                        entity.order1.customer_location,
+                        entity.order2.restaurant_location,
+                        entity.order2.customer_location,
+                        [driver],
+                    )
+                    self.logger.debug(
+                        f"Pair {entity.pair_id}: r_d={result['r_d']:.3f}km + "
+                        f"route_cost={result['route_cost']:.3f}km = {result['total_cost']:.3f}km"
+                    )
+                    return result['total_cost']
             
         else:  # EntityType.ORDER
             # Driver → Restaurant → Customer
