@@ -675,7 +675,10 @@ print(f"✓ Results stored in 'design_analysis_results'")
 Two tables are produced:
 
 Table A — Main performance metrics: same shape as Study 3's table, with X' added
-          as a third curation policy row per ratio block.
+          as a third curation policy row per ratio block. Expanded to include the
+          full delivery chain (delivery travel time, fulfillment time) and two
+          load/mechanism indicators (driver utilization, immediate assignment rate)
+          for richer R-C and operational-relaxation visibility.
 Table B — Curation diagnostic metrics: fallback rate (Policy X's operating envelope)
           alongside branch activation rates (Policy X's operating envelope).
 
@@ -692,10 +695,6 @@ import re
 
 def extract_ratio_pairing_curation(design_name):
     """Extract ratio, pairing condition, and curation policy from design point name."""
-    # Pattern: ratio_5.0_no_pairing_state_adaptive / ratio_5.0_pairing_proximity
-    # Curation alternatives ordered so the longer 'state_adaptive' is matched
-    # correctly; alternation tries left-to-right, but all three are mutually
-    # exclusive prefixes so order does not actually matter here.
     match = re.match(
         r'ratio_([\d.]+)_(no_pairing|pairing)_(uniform|proximity|state_adaptive)',
         design_name
@@ -717,20 +716,38 @@ for design_name, analysis_result in design_analysis_results.items():
 
     stats_with_cis = analysis_result['statistics_with_cis']
 
-    # Order metrics — assignment time (mean of means) and pickup travel time
+    # ------------------------------------------------------------------
+    # ORDER METRICS
+    # ------------------------------------------------------------------
     order_metrics = stats_with_cis.get('order_metrics', {})
 
+    # Assignment time
     assignment = order_metrics.get('assignment_time', {}).get('mean_of_means', {})
     mom_estimate = assignment.get('point_estimate', 0)
     mom_ci = assignment.get('confidence_interval', [0, 0])
     mom_ci_width = (mom_ci[1] - mom_ci[0]) / 2 if mom_ci[0] is not None else 0
 
+    # Pickup travel time (driver → restaurant)
     pickup = order_metrics.get('pickup_travel_time', {}).get('mean_of_means', {})
     pickup_estimate = pickup.get('point_estimate', 0)
     pickup_ci = pickup.get('confidence_interval', [0, 0])
     pickup_ci_width = (pickup_ci[1] - pickup_ci[0]) / 2 if pickup_ci[0] is not None else 0
 
-    # Queue dynamics — growth rate and average queue size
+    # Delivery travel time (restaurant → customer, direct R-C leg)
+    delivery = order_metrics.get('delivery_travel_time', {}).get('mean_of_means', {})
+    delivery_estimate = delivery.get('point_estimate', 0)
+    delivery_ci = delivery.get('confidence_interval', [0, 0])
+    delivery_ci_width = (delivery_ci[1] - delivery_ci[0]) / 2 if delivery_ci[0] is not None else 0
+
+    # Fulfillment time (assignment + pickup + delivery — full customer experience)
+    fulfillment = order_metrics.get('fulfillment_time', {}).get('mean_of_means', {})
+    fulfillment_estimate = fulfillment.get('point_estimate', 0)
+    fulfillment_ci = fulfillment.get('confidence_interval', [0, 0])
+    fulfillment_ci_width = (fulfillment_ci[1] - fulfillment_ci[0]) / 2 if fulfillment_ci[0] is not None else 0
+
+    # ------------------------------------------------------------------
+    # QUEUE DYNAMICS METRICS
+    # ------------------------------------------------------------------
     queue_dynamics_metrics = stats_with_cis.get('queue_dynamics_metrics', {})
 
     growth_rate = queue_dynamics_metrics.get('unassigned_entities_growth_rate', {})
@@ -743,14 +760,37 @@ for design_name, analysis_result in design_analysis_results.items():
     avg_queue_ci = avg_queue.get('confidence_interval', [0, 0])
     avg_queue_ci_width = (avg_queue_ci[1] - avg_queue_ci[0]) / 2 if avg_queue_ci[0] is not None else 0
 
-    # System metrics — pairing rate
+    # ------------------------------------------------------------------
+    # SYSTEM STATE METRICS (two-level: mean_of_means pattern)
+    # ------------------------------------------------------------------
+    system_state_metrics = stats_with_cis.get('system_state_metrics', {})
+
+    # Driver utilization — delivering_drivers / active_drivers (shows operational relaxation)
+    driver_util = system_state_metrics.get('driver_utilization', {}).get('mean_of_means', {})
+    driver_util_estimate = driver_util.get('point_estimate', 0)
+    driver_util_ci = driver_util.get('confidence_interval', [0, 0])
+    driver_util_ci_width = (driver_util_ci[1] - driver_util_ci[0]) / 2 if driver_util_ci[0] is not None else 0
+
+    # ------------------------------------------------------------------
+    # SYSTEM METRICS (one-level pattern — no mean_of_means wrapper)
+    # ------------------------------------------------------------------
     system_metrics = stats_with_cis.get('system_metrics', {})
+
+    # Pairing rate
     pairing_rate = system_metrics.get('system_pairing_rate', {})
     pairing_rate_estimate = pairing_rate.get('point_estimate', None)
     pairing_rate_ci = pairing_rate.get('confidence_interval', [None, None])
     pairing_rate_ci_width = (pairing_rate_ci[1] - pairing_rate_ci[0]) / 2 if pairing_rate_ci[0] is not None else None
 
-    # Curation metrics — fallback rate (Policy X) and branch activation rates (Policy X')
+    # Immediate assignment rate — fraction of orders assigned at arrival (D > 0)
+    immediate_assign = system_metrics.get('immediate_assignment_rate', {})
+    immediate_assign_estimate = immediate_assign.get('point_estimate', 0)
+    immediate_assign_ci = immediate_assign.get('confidence_interval', [0, 0])
+    immediate_assign_ci_width = (immediate_assign_ci[1] - immediate_assign_ci[0]) / 2 if immediate_assign_ci[0] is not None else 0
+
+    # ------------------------------------------------------------------
+    # CURATION METRICS
+    # ------------------------------------------------------------------
     curation_metrics = stats_with_cis.get('curation_metrics', {})
 
     def _extract_rate(metric_key):
@@ -769,16 +809,29 @@ for design_name, analysis_result in design_analysis_results.items():
         'ratio': ratio,
         'pairing_condition': pairing_condition,
         'curation_policy': curation_policy,
+        # Order metrics
         'mom_estimate': mom_estimate,
         'mom_ci_width': mom_ci_width,
         'pickup_estimate': pickup_estimate,
         'pickup_ci_width': pickup_ci_width,
+        'delivery_estimate': delivery_estimate,
+        'delivery_ci_width': delivery_ci_width,
+        'fulfillment_estimate': fulfillment_estimate,
+        'fulfillment_ci_width': fulfillment_ci_width,
+        # Queue dynamics
         'growth_rate_estimate': growth_rate_estimate,
         'growth_rate_ci_width': growth_rate_ci_width,
         'avg_queue_estimate': avg_queue_estimate,
         'avg_queue_ci_width': avg_queue_ci_width,
+        # System state
+        'driver_util_estimate': driver_util_estimate,
+        'driver_util_ci_width': driver_util_ci_width,
+        # System metrics
         'pairing_rate_estimate': pairing_rate_estimate,
         'pairing_rate_ci_width': pairing_rate_ci_width,
+        'immediate_assign_estimate': immediate_assign_estimate,
+        'immediate_assign_ci_width': immediate_assign_ci_width,
+        # Curation metrics
         'fallback_rate_estimate': fallback_rate_estimate,
         'fallback_rate_ci_width': fallback_rate_ci_width,
         'pair_queued_estimate': pair_queued_estimate,
@@ -803,7 +856,9 @@ metrics_data.sort(key=lambda r: (r['ratio'],
 print("\nTABLE A — MAIN PERFORMANCE METRICS")
 header_a = (f"  {'Ratio':>5}  {'Pairing':>9}  {'Curation':>9}  "
             f"{'Assign Time':>16}  {'Pickup Travel':>16}  "
-            f"{'Avg Queue':>17}  {'Growth Rate':>17}  "
+            f"{'Delivery Travel':>16}  {'Fulfillment':>16}  "
+            f"{'Avg Queue':>17}  {'Growth Rate':>18}  "
+            f"{'Driver Util':>14}  {'Immed. Rate':>14}  "
             f"{'Pairing Rate':>16}")
 print(header_a)
 print("="*len(header_a))
@@ -814,22 +869,28 @@ for row in metrics_data:
         print("-"*len(header_a))
     current_ratio = row['ratio']
 
-    assignment_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
-    pickup_str = f"{row['pickup_estimate']:5.2f} ± {row['pickup_ci_width']:5.2f}"
-    avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:6.2f}"
+    assignment_str  = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
+    pickup_str      = f"{row['pickup_estimate']:5.2f} ± {row['pickup_ci_width']:5.2f}"
+    delivery_str    = f"{row['delivery_estimate']:5.2f} ± {row['delivery_ci_width']:5.2f}"
+    fulfillment_str = f"{row['fulfillment_estimate']:5.2f} ± {row['fulfillment_ci_width']:5.2f}"
+    avg_queue_str   = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:6.2f}"
     growth_rate_str = f"{row['growth_rate_estimate']:7.4f} ± {row['growth_rate_ci_width']:7.4f}"
+    driver_util_str = f"{row['driver_util_estimate']:.4f} ± {row['driver_util_ci_width']:.4f}"
+    immediate_str   = f"{row['immediate_assign_estimate']:.4f} ± {row['immediate_assign_ci_width']:.4f}"
 
     if row['pairing_rate_estimate'] is not None and row['pairing_rate_ci_width'] is not None:
         pairing_rate_str = f"{row['pairing_rate_estimate']*100:5.2f} ± {row['pairing_rate_ci_width']*100:5.2f}%"
     else:
         pairing_rate_str = "N/A"
 
-    pairing_label = "ON" if row['pairing_condition'] == 'pairing' else "OFF"
+    pairing_label  = "ON" if row['pairing_condition'] == 'pairing' else "OFF"
     curation_label = curation_label_map[row['curation_policy']]
 
     print(f"  {row['ratio']:>5.1f}  {pairing_label:>9}  {curation_label:>9}  "
           f"{assignment_str:>16}  {pickup_str:>16}  "
-          f"{avg_queue_str:>17}  {growth_rate_str:>17}  "
+          f"{delivery_str:>16}  {fulfillment_str:>16}  "
+          f"{avg_queue_str:>17}  {growth_rate_str:>18}  "
+          f"{driver_util_str:>14}  {immediate_str:>14}  "
           f"{pairing_rate_str:>16}")
 
 print("="*len(header_a))
@@ -859,27 +920,24 @@ for row in metrics_data:
         print("-"*len(header_b))
     current_ratio = row['ratio']
 
-    pairing_label = "ON" if row['pairing_condition'] == 'pairing' else "OFF"
+    pairing_label  = "ON" if row['pairing_condition'] == 'pairing' else "OFF"
     curation_label = curation_label_map[row['curation_policy']]
 
-    # For U: all curation diagnostics are N/A (no curation attempted).
-    # For X: only fallback meaningful; branch rates are 0 → display as N/A.
-    # For X': only branch rates meaningful; fallback is 0 → display as N/A.
     if row['curation_policy'] == 'uniform':
         fallback_str = "N/A"
-        pq_str = "N/A"
-        si_str = "N/A"
-        sq_str = "N/A"
+        pq_str       = "N/A"
+        si_str       = "N/A"
+        sq_str       = "N/A"
     elif row['curation_policy'] == 'proximity':
         fallback_str = _fmt_rate(row['fallback_rate_estimate'], row['fallback_rate_ci_width'])
-        pq_str = "N/A"
-        si_str = "N/A"
-        sq_str = "N/A"
+        pq_str       = "N/A"
+        si_str       = "N/A"
+        sq_str       = "N/A"
     else:  # state_adaptive
         fallback_str = "N/A"
-        pq_str = _fmt_rate(row['pair_queued_estimate'], row['pair_queued_ci_width'])
-        si_str = _fmt_rate(row['single_imm_estimate'], row['single_imm_ci_width'])
-        sq_str = _fmt_rate(row['single_q_estimate'], row['single_q_ci_width'])
+        pq_str       = _fmt_rate(row['pair_queued_estimate'], row['pair_queued_ci_width'])
+        si_str       = _fmt_rate(row['single_imm_estimate'], row['single_imm_ci_width'])
+        sq_str       = _fmt_rate(row['single_q_estimate'], row['single_q_ci_width'])
 
     print(f"  {row['ratio']:>5.1f}  {pairing_label:>9}  {curation_label:>9}  "
           f"{fallback_str:>16}  {pq_str:>16}  "
@@ -895,14 +953,25 @@ print("-"*80)
 print("CURATION POLICY:  U = uniform random,  X = R-D proximity,  X' = state-adaptive")
 print()
 print("TABLE A — PERFORMANCE METRICS:")
-print("  • Pickup Travel: driver→restaurant leg. X and X' should reduce vs U where")
-print("    R-D signal is available (low-to-mid load, idle drivers present).")
-print("  • Assign Time / Avg Queue / Growth Rate: outcome signals at the system level.")
-print("    X vs X' separation is expected primarily at high load (ratio ≥ 6.0) where")
-print("    X's envelope narrows but X' remains active via alternative branches.")
-print("  • Pairing Rate: under pairing ON, does X' raise pairing rate above what U/X")
-print("    produce? If yes, X' is actively constructing pairs; if no, pair_queued is")
-print("    duplicating opportunistic formation.")
+print("  • Assign Time: driver assigned to order. Primary outcome; sensitive to D > 0")
+print("    frequency (immediate rate) and queue depth.")
+print("  • Pickup Travel: driver→restaurant leg. X and X' both act here (R-D signal).")
+print("    Separation vs U expected at low/mid load where idle drivers are available.")
+print("  • Delivery Travel: restaurant→customer leg. Direct R-C effect; X' acts via")
+print("    pair_queued and single_queued branches. Should differ from pickup pattern.")
+print("  • Fulfillment: assignment + pickup + delivery — full customer experience.")
+print("    Integrates all three legs; pairing effect visible here (paired orders absorb")
+print("    more travel but may offset via faster assignment).")
+print("  • Avg Queue / Growth Rate: system-level load signals. X vs X' separation")
+print("    expected primarily at high load (ratio ≥ 6.0) where X's envelope narrows.")
+print("  • Driver Util: delivering_drivers / active_drivers. Lower util under X' vs X")
+print("    at high load means the system is operationally more relaxed (fewer drivers")
+print("    locked in delivery, more available for assignment).")
+print("  • Immed. Rate: fraction of orders assigned at arrival (D > 0). Directly")
+print("    determines single_immediate branch activation rate in X'. Higher rate at")
+print("    low load; near-zero at high load when queue dominates.")
+print("  • Pairing Rate: under pairing ON, does X' construct pairs beyond what U/X")
+print("    achieve opportunistically? Rise vs U/X signals active pair construction.")
 print()
 print("TABLE B — CURATION DIAGNOSTIC METRICS:")
 print("  • Fallback (Policy X only): fraction of arrivals where no idle drivers existed")
@@ -923,7 +992,6 @@ print("="*80)
 
 print("\n✓ Metric extraction complete")
 print("✓ Results ready for state-adaptive curation analysis")
-
 # %% CELL 17: Ad-hoc Analysis (Placeholder)
 """
 PLACEHOLDER FOR AD-HOC ANALYSIS
