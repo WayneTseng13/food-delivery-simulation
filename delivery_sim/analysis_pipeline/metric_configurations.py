@@ -217,9 +217,24 @@ METRIC_CONFIGURATIONS = {
                 'metric_name': 'curation_fallback_rate',
                 'target_statistic': 'mean',
                 'construct_ci': True
-            }
+            },
+            {
+                'metric_name': 'curation_pair_queued_rate',
+                'target_statistic': 'mean',
+                'construct_ci': True
+            },
+            {
+                'metric_name': 'curation_single_immediate_rate',
+                'target_statistic': 'mean',
+                'construct_ci': True
+            },
+            {
+                'metric_name': 'curation_single_queued_rate',
+                'target_statistic': 'mean',
+                'construct_ci': True
+            },
         ],
-        'description': 'R-D curation operating envelope metrics'
+        'description': 'Curation operating envelope metrics (Policy X fallback rate; Policy X\' branch activation rates)'
     }
 
 }
