@@ -387,7 +387,7 @@ no_pairing_params = {
 }
 
 # Curation policy values (matches OperationalConfig.curation_policy)
-UNIFORM = 'uniform'
+UNIFORM = None                # CHANGED: no curation policy
 PROXIMITY = 'proximity'
 STATE_ADAPTIVE = 'state_adaptive'
 
@@ -484,7 +484,12 @@ for config in operational_configs:
     op_config = config['config']
     ratio = op_config.mean_driver_inter_arrival_time / op_config.mean_order_inter_arrival_time
     pairing_status = "PAIRING ON" if op_config.pairing_enabled else "PAIRING OFF"
-    curation_status = f"CURATION {op_config.curation_policy.upper()}"
+    curation_label = (
+        op_config.curation_policy.upper()
+        if op_config.curation_policy is not None
+        else "NONE"
+    )
+    curation_status = f"CURATION {curation_label}"
     print(f"  • {config['name']}: ratio={ratio:.1f}, {pairing_status}, {curation_status}")
 
 # %% CELL 9: Design Point Creation

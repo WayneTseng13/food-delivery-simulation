@@ -33,7 +33,7 @@ from delivery_sim.system_data.system_data_collector import SystemDataCollector
 from delivery_sim.system_data.system_snapshot_repository import SystemSnapshotRepository
 from delivery_sim.utils.priority_scoring import PriorityScorer
 from delivery_sim.event_collectors.collector_registry import EventCollectorRegistry
-from delivery_sim.utils.curation_policy import UniformPolicy, ProximityCurationPolicy,  StateAdaptiveCurationPolicy
+from delivery_sim.utils.curation_policy import ProximityCurationPolicy,  StateAdaptiveCurationPolicy
 
 class SimulationRunner:
     """
@@ -213,14 +213,15 @@ class SimulationRunner:
         """Create services that connect infrastructure to variant environment."""
         self.logger.debug("Creating services...")
 
-        # Create curation policy based on operational config
-        restaurant_selection_stream = self.operational_rng.get_stream('restaurant_selection')
-
-        if self.config.curation_policy == 'proximity':
+        # Create curation policy based on operational config.
+        # None means no curation — order_arrival_service handles uniform
+        # restaurant sampling itself.
+        if self.config.curation_policy is None:
+            curation_policy = None
+        elif self.config.curation_policy == 'proximity':
             curation_policy = ProximityCurationPolicy(
                 restaurant_repository=self.restaurant_repository,
                 driver_repository=self.driver_repository,
-                restaurant_selection_stream=restaurant_selection_stream
             )
         elif self.config.curation_policy == 'state_adaptive':
             curation_policy = StateAdaptiveCurationPolicy(
@@ -230,12 +231,18 @@ class SimulationRunner:
                 config=self.config,
             )
         else:
-            curation_policy = UniformPolicy(
-                restaurant_repository=self.restaurant_repository,
-                restaurant_selection_stream=restaurant_selection_stream
+            # Defensive — should be unreachable because OperationalConfig validates
+            # the value at construction time.
+            raise ValueError(
+                f"Unknown curation_policy: {self.config.curation_policy!r}"
             )
 
-        self.logger.info(f"Curation policy: {type(curation_policy).__name__}")
+        policy_label = (
+            type(curation_policy).__name__
+            if curation_policy is not None
+            else "None (no curation)"
+        )
+        self.logger.info(f"Curation policy: {policy_label}")
 
         # Create core services
         services = {

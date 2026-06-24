@@ -4,33 +4,6 @@ from delivery_sim.utils.logging_system import get_logger
 from delivery_sim.utils.route_evaluator import evaluate_partial
 
 
-class UniformPolicy:
-    """
-    Policy U: uniform random restaurant selection.
-
-    Baseline behavior — equivalent to the original _select_restaurant_location
-    logic extracted into a policy object.
-    """
-
-    def __init__(self, restaurant_repository, restaurant_selection_stream):
-        self.logger = get_logger("utils.curation_policy")
-        self.restaurant_repository = restaurant_repository
-        self.rng = restaurant_selection_stream
-
-    def select(self, customer_location=None):
-        """
-        Select a restaurant uniformly at random.
-        customer_location is accepted but ignored (interface compatibility).
-
-        Returns:
-            tuple: (Restaurant, None)
-        """
-        restaurants = self.restaurant_repository.find_all()
-        selected = self.rng.choice(restaurants)
-        self.logger.debug(f"UniformPolicy selected restaurant {selected.restaurant_id}")
-        return selected, None
-
-
 class ProximityCurationPolicy:
     """
     Policy X: R-D proximity curation (Savelsbergh & Ulmer, 2024).
@@ -40,15 +13,15 @@ class ProximityCurationPolicy:
         Returns the restaurant with the shortest minimum distance.
 
     When no idle drivers exist:
-        R-D signal is unavailable. Falls back to uniform random selection.
+        R-D signal is unavailable. Policy returns None — no recommendation is
+        produced. The customer behavior layer (order_arrival_service) handles
+        the no-recommendation case by sampling uniformly over all restaurants.
     """
 
-    def __init__(self, restaurant_repository, driver_repository,
-                 restaurant_selection_stream):
+    def __init__(self, restaurant_repository, driver_repository):
         self.logger = get_logger("utils.curation_policy")
         self.restaurant_repository = restaurant_repository
         self.driver_repository = driver_repository
-        self.rng = restaurant_selection_stream
 
     def select(self, customer_location=None):
         """
@@ -56,20 +29,17 @@ class ProximityCurationPolicy:
         customer_location is accepted but ignored (interface compatibility).
 
         Returns:
-            tuple: (Restaurant, curation_result)
-                   'curated'  — idle drivers existed, proximity selection applied.
-                   'fallback' — no idle drivers, uniform random used instead.
+            tuple: (Restaurant or None, curation_result)
+                   (Restaurant, 'curated')  — idle drivers existed, proximity selection applied.
+                   (None,       'fallback') — no idle drivers, no recommendation produced.
         """
         idle_drivers = self.driver_repository.find_available_drivers()
 
         if not idle_drivers:
-            restaurants = self.restaurant_repository.find_all()
-            selected = self.rng.choice(restaurants)
             self.logger.debug(
-                f"ProximityCuration: no idle drivers, fallback to random "
-                f"-> restaurant {selected.restaurant_id}"
+                "ProximityCuration: no idle drivers, no recommendation produced"
             )
-            return selected, 'fallback'
+            return None, 'fallback'
 
         restaurants = self.restaurant_repository.find_all()
         best_restaurant = None

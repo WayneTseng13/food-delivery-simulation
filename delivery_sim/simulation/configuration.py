@@ -42,8 +42,8 @@ class OperationalConfig:
                  max_service_duration,             # minutes
 
                  # Curation policy                              # NEW
-                 curation_policy='uniform',        # 'uniform' or 'proximity' or 'state_adaptive'
-                 ):
+                 curation_policy=None,        # None or 'proximity' or 'state_adaptive'
+                 customer_compliance_probability=1.0):
 
         # Arrival process parameters
         self.mean_order_inter_arrival_time = mean_order_inter_arrival_time
@@ -60,8 +60,29 @@ class OperationalConfig:
         self.min_service_duration = min_service_duration
         self.max_service_duration = max_service_duration
 
-        # Curation policy                                       # NEW
-        self.curation_policy = curation_policy                 # NEW
+        # Curation policy
+        # Valid values: None (no curation), 'proximity' (Policy X), 'state_adaptive' (Policy X').
+        # When None, no curation policy is instantiated and the customer samples a
+        # restaurant uniformly at random — equivalent to the original "Policy U" behavior.
+        valid_policies = {None, 'proximity', 'state_adaptive'}
+        if curation_policy not in valid_policies:
+            raise ValueError(
+                f"Invalid curation_policy: {curation_policy!r}. "
+                f"Must be one of {valid_policies}."
+            )
+        self.curation_policy = curation_policy
+
+        # Customer compliance probability
+        # Probability that a customer accepts the platform's restaurant recommendation
+        # when one is produced. Only meaningful when curation_policy is not None.
+        # Under curation_policy=None, this parameter is inert (no recommendation is
+        # produced, so the customer samples uniformly regardless of p).
+        if not (0.0 <= customer_compliance_probability <= 1.0):
+            raise ValueError(
+                f"customer_compliance_probability must be in [0.0, 1.0], "
+                f"got {customer_compliance_probability}."
+            )
+        self.customer_compliance_probability = customer_compliance_probability
 
     def __str__(self):
         return (f"OperationalConfig("
@@ -71,7 +92,8 @@ class OperationalConfig:
                 f"restaurants_threshold={self.restaurants_proximity_threshold}km, "
                 f"customers_threshold={self.customers_proximity_threshold}km, "
                 f"service_duration={self.mean_service_duration}±{self.service_duration_std_dev}min, "
-                f"curation={self.curation_policy})")             # NEW
+                f"curation={self.curation_policy}, "
+                f"compliance_p={self.customer_compliance_probability})")
 
 class ExperimentConfig:
     def __init__(self, simulation_duration, num_replications, operational_master_seed, 

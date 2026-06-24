@@ -120,6 +120,7 @@ class OperationalRNGManager:
     - customer_locations: Uniform sampling for delivery destinations
     - driver_initial_locations: Uniform sampling for driver starting positions
     - restaurant_selection: Random selection for order restaurant assignment
+    - customer_compliance: Compliance draw and "sample from rest" when a customer rejects a recommendation
     
     Args:
         operational_master_seed: Master seed for deriving all operational RNG streams.
@@ -174,7 +175,8 @@ class OperationalRNGManager:
             'service_duration': operational_master_seed + base_offset + 3,
             'customer_locations': operational_master_seed + base_offset + 4,
             'driver_initial_locations': operational_master_seed + base_offset + 5,
-            'restaurant_selection': operational_master_seed + base_offset + 6
+            'restaurant_selection': operational_master_seed + base_offset + 6,
+            'customer_compliance': operational_master_seed + base_offset + 7,  # NEW
         }
         
         # Create RandomState objects for each stream

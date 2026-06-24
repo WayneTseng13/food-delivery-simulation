@@ -12,7 +12,7 @@ class Order:
     """
     
     def __init__(self, order_id, restaurant_location, customer_location,
-                arrival_time, curation_result=None):
+                arrival_time, curation_result=None, customer_complied=None):
         """Initialize a new order with its basic properties."""
         self.logger = get_logger("entities.order")
 
@@ -23,11 +23,22 @@ class Order:
         self.customer_location = customer_location
         self.arrival_time = arrival_time
 
-        # Curation metadata — records how this order's restaurant was selected.
-        # None:       UniformPolicy was active (curation not applicable)
-        # 'curated':  ProximityCurationPolicy selected via R-D proximity
-        # 'fallback': ProximityCurationPolicy fell back to random (no idle drivers)
+        # Curation metadata — records the platform's recommendation state.
+        # None:                no curation policy was active
+        # 'fallback':          policy was active but produced no recommendation
+        #                      (Policy X with no idle drivers)
+        # 'curated':           Policy X selected via R-D proximity
+        # 'pair_queued',
+        # 'single_immediate',
+        # 'single_queued':     Policy X' branch labels
         self.curation_result = curation_result
+
+        # Customer compliance metadata — records the customer's response to the
+        # recommendation. Independent of curation_result.
+        # None:   no recommendation was produced (compliance not applicable)
+        # True:   recommendation produced and customer accepted it
+        # False:  recommendation produced and customer rejected it
+        self.customer_complied = customer_complied                           # NEW
 
         # State and relationships
         self.state = OrderState.CREATED
