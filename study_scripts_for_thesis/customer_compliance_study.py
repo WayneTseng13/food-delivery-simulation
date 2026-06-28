@@ -19,8 +19,8 @@ Building on Previous Studies:
 
 This Study (Customer Compliance):
 - Treats p as an explicit experimental parameter rather than a fixed assumption.
-- Sweeps p ∈ {0.0, 0.5, 1.0} to characterise how the curation effect scales as
-  customer behaviour deviates from "always accept".
+- Sweeps p ∈ {0.0, 0.1, 0.5, 1.0}, including p = 1/N = 0.1 
+  as the neutral null at which curation has no aggregate effect.
 - Tests both X and X' under partial compliance to learn whether X' is more or
   less robust to non-compliance than X.
 - Crosses with pairing ON/OFF — lower compliance should leave more queue around
@@ -174,11 +174,19 @@ sub_questions = """
 scope = """
 - Single fixed infrastructure (seed=42), consistent with Studies 1-4.
 - Three ratios: 5.0 (critical), 6.0 (no-pairing boundary), 7.0 (high stress).
-- Three compliance levels: 0.0, 0.5, 1.0 — endpoints plus midpoint.
-  - p=1.0: upper-bound reference (reproduces Study 4 design points).
-  - p=0.0: lower-bound reference (recommendation always rejected; customer
-    samples uniformly among non-recommended restaurants).
-  - p=0.5: midpoint sensitivity.
+- Four compliance levels spanning the parameter range:
+  - p=1.0: upper-bound reference (full compliance; reproduces Study 4 design points).
+  - p=0.5: realistic partial-compliance operating point.
+  - p=0.1 (= 1/N): neutral null — post-curation selection probability equals
+    the uniform baseline 1/N. At this point curation has no aggregate effect on
+    the order stream; the system should behave statistically identically to
+    Policy U (Study 4 reference) within Monte Carlo noise. Serves as both a
+    consistency check on the compliance machinery and the natural reference
+    point against which curation effects are measured.
+  - p=0.0: lower-bound worst-case (anti-recommendation regime; recommendation
+    always rejected, customer samples uniformly from non-recommended
+    restaurants). Not behaviorally realistic but informative as a worst-case
+    bound on the curation-compliance interaction.
 - Two curation policies: X and X'. Policy U is excluded because compliance is
   inert under U (no recommendation produced); Study 4 U results serve as the
   no-curation reference.
@@ -338,14 +346,20 @@ for config in scoring_configs:
 CUSTOMER COMPLIANCE STUDY: 3 × 2 × 2 × 3 factorial over compliance probability,
 curation policy, pairing condition, and arrival interval ratio.
 
-For each (ratio, pairing, curation) cell, sweep p ∈ {0.0, 0.5, 1.0}.
+For each (ratio, pairing, curation) cell, sweep p ∈ {0.0, 0.1, 0.5, 1.0}.
+p = 1/N = 0.1 is the neutral null at which curation has no aggregate effect.
 
 Policy U is excluded — compliance is inert under U because no recommendation is
 produced. Study 4's U results provide the no-curation reference if needed.
 """
 
-# Compliance probability sweep
-compliance_probabilities = [0.0, 0.5, 1.0]
+# Compliance probability sweep.
+# p = 0.0       : worst-case lower bound (anti-recommendation regime)
+# p = 1/N = 0.1 : neutral null — post-curation selection probability equals
+#                 baseline; should reproduce U behavior within MC noise.
+# p = 0.5       : realistic partial-compliance operating point
+# p = 1.0       : full-compliance upper bound
+compliance_probabilities = [0.0, 0.1, 0.5, 1.0]
 
 # Arrival interval ratios (same as Studies 3 and 4 for direct comparison)
 target_arrival_interval_ratios = [5.0, 6.0, 7.0]
