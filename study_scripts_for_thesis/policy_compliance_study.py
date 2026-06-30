@@ -38,17 +38,20 @@ Mechanism — customer compliance modelling:
   customer samples uniformly over all restaurants. p is not applied because
   there is no recommendation to comply with.
 
-Design Pattern (3 × 2 × 2 × 3 factorial):
-- 3 compliance probabilities: p = 0.0, 0.5, 1.0
-- 2 curation policies: proximity (X), state_adaptive (X')
+Design Pattern (4 × 4 × 2 × 3 factorial):
+- 4 curation policies: uniform (U), proximity (X),
+                       state_adaptive_no_pair_push (X''), state_adaptive (X')
+- 4 compliance probabilities: p = 0.0, 0.1, 0.5, 1.0
 - 2 pairing conditions: OFF, ON
-- 3 arrival interval ratios: 5.0 (critical), 6.0 (no-pairing boundary), 7.0 (high stress)
-- Baseline intensity only (order_interval = 1.0 min)
+- 3 arrival interval ratios: 5.0, 6.0, 7.0
 
-Total Design Points: 3 × 2 × 2 × 3 = 36
+Total Design Points: 4 × 4 × 2 × 3 = 96
 
-Reference points (NOT run in this study, available from Study 4 for context):
-- Policy U at p=anything reproduces Study 1/2 baselines (no recommendation produced).
+Redundancy (kept for sanity checking, not engineered away):
+- U × {4 p values} → 4 cells per (ratio, pairing) that should be equal.
+- X'' and X' under pairing OFF → should be bit-identical cell-by-cell across all p.
+
+Reference points:
 - Policy X at p=1.0 reproduces Study 3.
 - Policy X' at p=1.0 reproduces Study 4.
 """
@@ -187,9 +190,7 @@ scope = """
     always rejected, customer samples uniformly from non-recommended
     restaurants). Not behaviorally realistic but informative as a worst-case
     bound on the curation-compliance interaction.
-- Two curation policies: X and X'. Policy U is excluded because compliance is
-  inert under U (no recommendation produced); Study 4 U results serve as the
-  no-curation reference.
+- Four curation policies: U,X,X'',X'
 - Baseline intensity only (order_interval=1.0).
 """
 
@@ -343,14 +344,13 @@ for config in scoring_configs:
 
 # %% CELL 8: Operational Configuration(s)
 """
-CUSTOMER COMPLIANCE STUDY: 3 × 2 × 2 × 3 factorial over compliance probability,
+CUSTOMER COMPLIANCE STUDY: 4 × 4 × 2 × 3 factorial over compliance probability,
 curation policy, pairing condition, and arrival interval ratio.
 
 For each (ratio, pairing, curation) cell, sweep p ∈ {0.0, 0.1, 0.5, 1.0}.
 p = 1/N = 0.1 is the neutral null at which curation has no aggregate effect.
 
-Policy U is excluded — compliance is inert under U because no recommendation is
-produced. Study 4's U results provide the no-curation reference if needed.
+
 """
 
 # Compliance probability sweep.
@@ -378,7 +378,9 @@ no_pairing_params = {
 }
 
 # Curation policy values
+UNIFORM = None
 PROXIMITY = 'proximity'
+STATE_ADAPTIVE_NO_PAIR_PUSH = 'state_adaptive_no_pair_push'
 STATE_ADAPTIVE = 'state_adaptive'
 
 # Fixed service duration configuration
@@ -395,8 +397,12 @@ operational_configs = []
 for ratio in target_arrival_interval_ratios:
     for pairing_label, pairing_block in [('no_pairing', no_pairing_params),
                                           ('pairing', pairing_params)]:
-        for curation_label, curation_value in [('proximity', PROXIMITY),
-                                                ('state_adaptive', STATE_ADAPTIVE)]:
+        for curation_label, curation_value in [
+            ('uniform',                     UNIFORM),
+            ('proximity',                   PROXIMITY),
+            ('state_adaptive_no_pair_push', STATE_ADAPTIVE_NO_PAIR_PUSH),
+            ('state_adaptive',              STATE_ADAPTIVE),
+        ]:
             for p in compliance_probabilities:
                 config_name = (
                     f"ratio_{ratio:.1f}_{pairing_label}_{curation_label}_p{p:.1f}"
@@ -418,7 +424,7 @@ print(f"✓ Sweep dimensions:")
 print(f"  • Compliance probabilities: {compliance_probabilities}")
 print(f"  • Arrival interval ratios:  {target_arrival_interval_ratios}")
 print(f"  • Pairing conditions:       OFF, ON")
-print(f"  • Curation policies:        X (proximity), X' (state_adaptive)")
+print(f"  • Curation policies:        U, X, X'', X'")
 print(f"✓ Each (ratio, pairing, curation) cell has {len(compliance_probabilities)} p values")
 
 print("\nConfiguration breakdown:")
@@ -618,8 +624,10 @@ import re
 def extract_design_dims(design_name):
     """Extract ratio, pairing, curation, and p from a design point name."""
     match = re.match(
-        r'ratio_([\d.]+)_(no_pairing|pairing)_(proximity|state_adaptive)_p([\d.]+)',
-        design_name
+        r'ratio_([\d.]+)_(no_pairing|pairing)_'
+        r'(state_adaptive_no_pair_push|state_adaptive|proximity|uniform)_'
+        r'p([\d.]+)',
+        design_name,
     )
     if match:
         return (
@@ -747,8 +755,18 @@ for design_name, analysis_result in design_analysis_results.items():
 
 # Sort: ratio asc → pairing OFF/ON → curation X/X' → p asc
 pairing_order = {'no_pairing': 0, 'pairing': 1}
-curation_order = {'proximity': 0, 'state_adaptive': 1}
-curation_label_map = {'proximity': 'X', 'state_adaptive': "X'"}
+curation_order = {
+    'uniform': 0,
+    'proximity': 1,
+    'state_adaptive_no_pair_push': 2,
+    'state_adaptive': 3,
+}
+curation_label_map = {
+    'uniform': 'U',
+    'proximity': 'X',
+    'state_adaptive_no_pair_push': "X''",
+    'state_adaptive': "X'",
+}
 metrics_data.sort(key=lambda r: (r['ratio'],
                                  pairing_order[r['pairing_condition']],
                                  curation_order[r['curation_policy']],
