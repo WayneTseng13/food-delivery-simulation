@@ -242,3 +242,65 @@ class StateAdaptiveCurationPolicy:
                 best = r
 
         return best
+
+
+class StateAdaptiveNoPairPushCurationPolicy(StateAdaptiveCurationPolicy):
+    """
+    Policy X'': state-adaptive curation without active pair-formation push.
+
+    Same state-adaptive structure as X' (driver-availability branching with R-C
+    signal in both states), but the pair_queued branch is removed. When no
+    idle drivers exist, X'' selects R_N minimising R-C alone — it does NOT
+    inspect the pending queue for pair-eligible anchors.
+
+    Reachable operating states:
+
+      single_immediate D>0, no pair-eligible anchors (by assignment invariant).
+                       Pick R_N minimising R-D + R-C.
+                       Identical to X' single_immediate branch.
+
+      single_queued    D=0.
+                       Pick R_N minimising R-C alone.
+                       Identical to X' single_queued branch.
+
+    Purpose in the policy hierarchy:
+      X    (proximity)                  uses R-D only
+      X''  (state_adaptive_no_pair_push) adds R-C signal, no pair construction
+      X'   (state_adaptive)              adds active pair-formation push
+
+    X vs X''  isolates the contribution of the R-C signal and the
+              state-adaptive structure that uses it.
+    X' vs X'' isolates the contribution of the active pair-formation push.
+              Note: zero under pairing OFF by construction (X' gates the
+              pair_queued branch on config.pairing_enabled), nonzero under
+              pairing ON.
+
+    curation_result labels: 'single_immediate', 'single_queued'.
+    The label 'pair_queued' never appears under X''.
+    """
+
+    def select(self, customer_location=None):
+        """
+        Select a restaurant based on current system state, without considering
+        pair construction. Inherits all helper methods from
+        StateAdaptiveCurationPolicy.
+        """
+        idle_drivers = self.driver_repository.find_available_drivers()
+        restaurants = self.restaurant_repository.find_all()
+
+        if idle_drivers:
+            selected = self._select_single_immediate(
+                customer_location, restaurants, idle_drivers
+            )
+            self.logger.debug(
+                f"StateAdaptiveNoPairPush [single_immediate]: selected restaurant "
+                f"{selected.restaurant_id}"
+            )
+            return selected, 'single_immediate'
+
+        selected = self._select_single_queued(customer_location, restaurants)
+        self.logger.debug(
+            f"StateAdaptiveNoPairPush [single_queued]: selected restaurant "
+            f"{selected.restaurant_id}"
+        )
+        return selected, 'single_queued'        

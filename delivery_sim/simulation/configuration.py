@@ -61,10 +61,19 @@ class OperationalConfig:
         self.max_service_duration = max_service_duration
 
         # Curation policy
-        # Valid values: None (no curation), 'proximity' (Policy X), 'state_adaptive' (Policy X').
+        # Valid values:
+        #   None                           — no curation (Policy U)
+        #   'proximity'                    — Policy X  (R-D signal)
+        #   'state_adaptive_no_pair_push'  — Policy X'' (R-D + R-C, no pair push)
+        #   'state_adaptive'               — Policy X' (R-D + R-C + active pair push)
         # When None, no curation policy is instantiated and the customer samples a
         # restaurant uniformly at random — equivalent to the original "Policy U" behavior.
-        valid_policies = {None, 'proximity', 'state_adaptive'}
+        valid_policies = {
+            None,
+            'proximity',
+            'state_adaptive',
+            'state_adaptive_no_pair_push',
+        }
         if curation_policy not in valid_policies:
             raise ValueError(
                 f"Invalid curation_policy: {curation_policy!r}. "
