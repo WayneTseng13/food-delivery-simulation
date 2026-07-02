@@ -1,59 +1,56 @@
-# customer_compliance_study.py
 """
-Customer Compliance Study: Effect of Customer Compliance Probability on
-Curation Policy Performance
+Active Pair-Push Isolation Study: Isolating the Contribution of the
+Active Pair-Formation Push Branch in Absence of R-C Signal.
 
-Research Question: How does customer compliance probability (p) modulate the
-effectiveness of curation policies X (R-D proximity) and X' (state-adaptive)?
-Where does X' separate from X most cleanly when compliance is partial?
+Research question: Does the active pair-formation push branch contribute
+meaningfully to system performance when it is NOT preceded by R-C-based
+selection in the single-order branches?
 
-Building on Previous Studies:
-- Study 1 (Arrival Interval Ratio) established the regime structure under no
-  curation, no pairing.
-- Study 2 (Pairing Effect) demonstrated pairing's capacity-expansion effect.
-- Study 3 (R-D Curation, p=1) quantified Policy X's pickup-leg saving and the
-  collapsing operating envelope at high load.
-- Study 4 (State-Adaptive Curation, p=1) introduced Policy X' and showed it
-  produces a regime change at p=1 — but the result was contingent on the upper-
-  bound full-compliance assumption.
+Prior findings (high_ratio_pair_push_study.py):
+- X' vs X'' gap is modest across ratios 5-12. R-C signal (added by X'' over X)
+  produces the dominant curation gain; active pair-push (added by X' over X'')
+  produces a smaller, opportunity-realization-bounded gain.
+- Open question: is active pair-push weak intrinsically, or is it weak because
+  R-C already does the geometric work that pair construction would otherwise
+  do? The X'' vs X' comparison cannot answer this — R-C is present in both.
 
-This Study (Customer Compliance):
-- Treats p as an explicit experimental parameter rather than a fixed assumption.
-- Sweeps p ∈ {0.0, 0.1, 0.5, 1.0}, including p = 1/N = 0.1 
-  as the neutral null at which curation has no aggregate effect.
-- Tests both X and X' under partial compliance to learn whether X' is more or
-  less robust to non-compliance than X.
-- Crosses with pairing ON/OFF — lower compliance should leave more queue around
-  even at moderate ratios, which may enable X's pair_queued branch to fire more
-  often and exercise the "active push for pair formation" mechanism.
+This study introduces X''' (proximity_with_pair_push), which retains X's
+single-order branches (min R-D only, no R-C) and adds the active pair-push
+branch from X'. The comparison X vs X''' isolates the marginal contribution
+of the pair-push branch WITHOUT the confound of R-C in singles.
 
-Mechanism — customer compliance modelling:
-- At each order arrival, the active curation policy attempts to produce a
-  recommendation given current system state.
-- If a recommendation is produced: the customer accepts it with probability p
-  (compliance), and rejects with probability 1-p. On rejection, the customer
-  samples uniformly from the remaining restaurants (excluding the recommended
-  one).
-- If no recommendation is produced (X in fallback when no idle drivers): the
-  customer samples uniformly over all restaurants. p is not applied because
-  there is no recommendation to comply with.
+Signal-contribution factorial completed by X''':
 
-Design Pattern (4 × 4 × 2 × 3 factorial):
-- 4 curation policies: uniform (U), proximity (X),
-                       state_adaptive_no_pair_push (X''), state_adaptive (X')
-- 4 compliance probabilities: p = 0.0, 0.1, 0.5, 1.0
-- 2 pairing conditions: OFF, ON
-- 3 arrival interval ratios: 5.0, 6.0, 7.0
+                          | No R-C in singles | R-C in singles
+    ----------------------|-------------------|----------------
+    No pair-push branch   | X                 | X''
+    Pair-push branch      | X'''              | X'
 
-Total Design Points: 4 × 4 × 2 × 3 = 96
+Interpretive framework:
+- X vs X''': marginal contribution of the pair-push branch, given X-style singles.
+- X'' vs X': marginal contribution of the pair-push branch, given X''-style singles.
+- If X''' significantly beats X while X' barely beats X'': R-C was masking
+  active pair-push; the mechanism is real but redundant with R-C.
+- If X''' barely beats X (like X' barely beats X''): active pair-push is a
+  weak mechanism regardless of what surrounds it. Robust negative result on
+  the pair-push branch.
 
-Redundancy (kept for sanity checking, not engineered away):
-- U × {4 p values} → 4 cells per (ratio, pairing) that should be equal.
-- X'' and X' under pairing OFF → should be bit-identical cell-by-cell across all p.
+Caveat: X''' inherits evaluate_partial in its pair_queued branch, which uses
+the arriving customer's location as a route-cost stop. R-C-like geometric
+information is therefore present in the pair-push scoring itself. What X'''
+removes is R-C as an EXPLICIT selection criterion in single-order branches.
+This is a decomposition of BRANCH structure, not of raw signal usage.
 
-Reference points:
-- Policy X at p=1.0 reproduces Study 3.
-- Policy X' at p=1.0 reproduces Study 4.
+Design (2 x 2 x 2 factorial):
+- 2 curation policies: proximity (X), proximity_with_pair_push (X''')
+- 2 compliance probabilities: p = 0.5, 1.0
+- 2 arrival interval ratios: 7.0, 10.0
+- Pairing: ON only (pair_queued branch is inert without pairing)
+
+Total design points: 2 x 2 x 2 = 8
+
+Seeds and infrastructure config identical to prior high_ratio_pair_push_study
+so X''' results overlay onto existing X, X'', X' cells at ratio 10.
 """
 
 # %% CELL 1: Enable Autoreload
@@ -359,10 +356,10 @@ p = 1/N = 0.1 is the neutral null at which curation has no aggregate effect.
 #                 baseline; should reproduce U behavior within MC noise.
 # p = 0.5       : realistic partial-compliance operating point
 # p = 1.0       : full-compliance upper bound
-compliance_probabilities = [0.0, 0.1, 0.5, 1.0]
+compliance_probabilities = [0.5, 1.0]
 
 # Arrival interval ratios (same as Studies 3 and 4 for direct comparison)
-target_arrival_interval_ratios = [5.0, 6.0, 7.0]
+target_arrival_interval_ratios = [7.0,10.0]
 
 # Pairing parameter blocks
 pairing_params = {
@@ -371,17 +368,11 @@ pairing_params = {
     'customers_proximity_threshold': 3.0,
 }
 
-no_pairing_params = {
-    'pairing_enabled': False,
-    'restaurants_proximity_threshold': None,
-    'customers_proximity_threshold': None,
-}
 
-# Curation policy values
-UNIFORM = None
+
+# Curation policy values under test in this study
 PROXIMITY = 'proximity'
-STATE_ADAPTIVE_NO_PAIR_PUSH = 'state_adaptive_no_pair_push'
-STATE_ADAPTIVE = 'state_adaptive'
+PROXIMITY_WITH_PAIR_PUSH = 'proximity_with_pair_push'
 
 # Fixed service duration configuration
 FIXED_SERVICE_CONFIG = {
@@ -395,29 +386,25 @@ FIXED_SERVICE_CONFIG = {
 operational_configs = []
 
 for ratio in target_arrival_interval_ratios:
-    for pairing_label, pairing_block in [('no_pairing', no_pairing_params),
-                                          ('pairing', pairing_params)]:
-        for curation_label, curation_value in [
-            ('uniform',                     UNIFORM),
-            ('proximity',                   PROXIMITY),
-            ('state_adaptive_no_pair_push', STATE_ADAPTIVE_NO_PAIR_PUSH),
-            ('state_adaptive',              STATE_ADAPTIVE),
-        ]:
-            for p in compliance_probabilities:
-                config_name = (
-                    f"ratio_{ratio:.1f}_{pairing_label}_{curation_label}_p{p:.1f}"
+    for curation_label, curation_value in [
+        ('proximity',                PROXIMITY),
+        ('proximity_with_pair_push', PROXIMITY_WITH_PAIR_PUSH),
+    ]:
+        for p in compliance_probabilities:
+            config_name = (
+                f"ratio_{ratio:.1f}_pairing_{curation_label}_p{p:.1f}"
+            )
+            operational_configs.append({
+                'name': config_name,
+                'config': OperationalConfig(
+                    mean_order_inter_arrival_time=1.0,
+                    mean_driver_inter_arrival_time=ratio,
+                    **pairing_params,
+                    **FIXED_SERVICE_CONFIG,
+                    curation_policy=curation_value,
+                    customer_compliance_probability=p,
                 )
-                operational_configs.append({
-                    'name': config_name,
-                    'config': OperationalConfig(
-                        mean_order_inter_arrival_time=1.0,
-                        mean_driver_inter_arrival_time=ratio,
-                        **pairing_block,
-                        **FIXED_SERVICE_CONFIG,
-                        curation_policy=curation_value,
-                        customer_compliance_probability=p,
-                    )
-                })
+            })
 
 print(f"✓ Defined {len(operational_configs)} operational configurations")
 print(f"✓ Sweep dimensions:")
@@ -616,7 +603,7 @@ Table B — Curation diagnostic metrics: fallback rate (X) and branch activation
 """
 
 print("\n" + "="*80)
-print("KEY PERFORMANCE METRICS: CUSTOMER COMPLIANCE STUDY")
+print("KEY PERFORMANCE METRICS: PAIR-PUSH ISOLATION STUDY")
 print("="*80)
 
 import re
@@ -625,7 +612,7 @@ def extract_design_dims(design_name):
     """Extract ratio, pairing, curation, and p from a design point name."""
     match = re.match(
         r'ratio_([\d.]+)_(no_pairing|pairing)_'
-        r'(state_adaptive_no_pair_push|state_adaptive|proximity|uniform)_'
+        r'(state_adaptive_no_pair_push|state_adaptive|proximity_with_pair_push|proximity)_'
         r'p([\d.]+)',
         design_name,
     )
@@ -759,12 +746,14 @@ curation_order = {
     'uniform': 0,
     'proximity': 1,
     'state_adaptive_no_pair_push': 2,
-    'state_adaptive': 3,
+    'proximity_with_pair_push': 3,
+    'state_adaptive': 4,
 }
 curation_label_map = {
     'uniform': 'U',
     'proximity': 'X',
     'state_adaptive_no_pair_push': "X''",
+    'proximity_with_pair_push': "X'''",
     'state_adaptive': "X'",
 }
 metrics_data.sort(key=lambda r: (r['ratio'],
@@ -827,7 +816,7 @@ print("="*len(header_a))
 # TABLE B — CURATION DIAGNOSTIC METRICS
 # =========================================================================
 print("\nTABLE B — CURATION DIAGNOSTIC METRICS")
-print("(Fallback rate: Policy X envelope. Branch rates: Policy X' envelope.)")
+print("(Fallback rate: X and X'''.  Branch rates: X'', X''', X'.)")
 header_b = (f"  {'Ratio':>5}  {'Pairing':>9}  {'Curation':>9}  {'p':>4}  "
             f"{'Fallback':>16}  {'pair_queued':>16}  "
             f"{'single_imm':>16}  {'single_q':>16}")
@@ -856,11 +845,22 @@ for row in metrics_data:
     p_label = f"{row['p']:.1f}"
 
     if row['curation_policy'] == 'proximity':
+        # X: only fallback rate is meaningful
         fallback_str = _fmt_rate(row['fallback_rate_estimate'], row['fallback_rate_ci_width'])
         pq_str = "N/A"
         si_str = "N/A"
         sq_str = "N/A"
-    else:  # state_adaptive
+    elif row['curation_policy'] == 'proximity_with_pair_push':
+        # X''': fallback AND pair_queued are meaningful.
+        # 'curated' rate = 1 - fallback - pair_queued (not directly reported).
+        # single_immediate and single_queued branches don't exist in X'''.
+        fallback_str = _fmt_rate(row['fallback_rate_estimate'], row['fallback_rate_ci_width'])
+        pq_str = _fmt_rate(row['pair_queued_estimate'], row['pair_queued_ci_width'])
+        si_str = "N/A"
+        sq_str = "N/A"
+    else:
+        # X'' or X': branch rates, no fallback (state-adaptive always produces
+        # a recommendation).
         fallback_str = "N/A"
         pq_str = _fmt_rate(row['pair_queued_estimate'], row['pair_queued_ci_width'])
         si_str = _fmt_rate(row['single_imm_estimate'], row['single_imm_ci_width'])
