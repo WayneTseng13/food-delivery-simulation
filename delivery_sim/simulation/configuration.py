@@ -63,16 +63,16 @@ class OperationalConfig:
         # Curation policy
         # Valid values:
         #   None                           — no curation (Policy U)
-        #   'proximity'                    — Policy X  (R-D signal)
-        #   'state_adaptive_no_pair_push'  — Policy X'' (R-D + R-C, no pair push)
-        #   'state_adaptive'               — Policy X' (R-D + R-C + active pair push)
-        # When None, no curation policy is instantiated and the customer samples a
-        # restaurant uniformly at random — equivalent to the original "Policy U" behavior.
+        #   'proximity'                    — Policy X    (R-D)
+        #   'state_adaptive_no_pair_push'  — Policy X''  (R-D + R-C)
+        #   'proximity_with_pair_push'     — Policy X''' (R-D + active pair-push)
+        #   'state_adaptive'               — Policy X'   (R-D + R-C + active pair-push)
         valid_policies = {
             None,
             'proximity',
             'state_adaptive',
             'state_adaptive_no_pair_push',
+            'proximity_with_pair_push',
         }
         if curation_policy not in valid_policies:
             raise ValueError(

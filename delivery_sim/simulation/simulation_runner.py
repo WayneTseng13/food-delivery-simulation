@@ -37,6 +37,7 @@ from delivery_sim.utils.curation_policy import (
     ProximityCurationPolicy,
     StateAdaptiveCurationPolicy,
     StateAdaptiveNoPairPushCurationPolicy,
+    ProximityWithPairPushCurationPolicy,
 )
 
 class SimulationRunner:
@@ -241,6 +242,13 @@ class SimulationRunner:
                 order_repository=self.order_repository,
                 config=self.config,
             )
+        elif self.config.curation_policy == 'proximity_with_pair_push':
+            curation_policy = ProximityWithPairPushCurationPolicy(
+                restaurant_repository=self.restaurant_repository,
+                driver_repository=self.driver_repository,
+                order_repository=self.order_repository,
+                config=self.config,
+            )    
         else:
             raise ValueError(
                 f"Unknown curation_policy: {self.config.curation_policy!r}"

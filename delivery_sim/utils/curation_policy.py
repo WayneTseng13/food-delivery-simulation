@@ -303,4 +303,101 @@ class StateAdaptiveNoPairPushCurationPolicy(StateAdaptiveCurationPolicy):
             f"StateAdaptiveNoPairPush [single_queued]: selected restaurant "
             f"{selected.restaurant_id}"
         )
-        return selected, 'single_queued'        
+        return selected, 'single_queued'    
+
+
+class ProximityWithPairPushCurationPolicy(StateAdaptiveCurationPolicy):
+    """
+    Policy X''': R-D proximity curation with active pair-formation push.
+
+    Isolates the contribution of the active pair-formation push branch when
+    the R-C signal is NOT used as an explicit selection criterion in the
+    single-order branches. Complements the X vs X'' comparison (which isolates
+    R-C without pair-push) to complete the signal-contribution decomposition.
+
+    Three reachable operating states:
+
+      pair_queued      D=0, pair-eligible anchor exists.
+                       Pick (R_N, anchor) jointly via evaluate_partial.
+                       Same as X' pair_queued branch.
+
+      curated          D>0.
+                       Pick R_N minimising R-D alone.
+                       Same as X's D>0 branch. Does NOT use R-C.
+
+      fallback         D=0, no pair-eligible anchor.
+                       Return None. Service layer samples uniformly.
+                       Same as X's fallback behavior. Does NOT use R-C.
+
+    Signal decomposition context:
+      X    (proximity)                   uses R-D
+      X''  (state_adaptive_no_pair_push) uses R-D + R-C
+      X''' (proximity_with_pair_push)    uses R-D + active_pair_push
+      X'   (state_adaptive)              uses R-D + R-C + active_pair_push
+
+    Caveat — the "no R-C" framing:
+      The pair_queued branch inherits evaluate_partial from X', which uses
+      the arriving customer's location as a stop in route-cost enumeration.
+      R-C-like geometric information is therefore present in the pair_queued
+      branch's scoring. What X''' removes is R-C as an EXPLICIT selection
+      criterion in the single-order branches, not R-C-like information from
+      route optimization inside the pair mechanism. A stricter decoupling
+      would require a different pair-selection score (e.g., R-R only) but
+      would change the pair-push mechanism substantively.
+
+    curation_result labels: 'pair_queued', 'curated', 'fallback'.
+      Note: 'curated' and 'fallback' are shared with ProximityCurationPolicy
+      (X). Analysis code that groups by curation_result will pool X and X'''
+      results for those two labels — usually fine, since the branch semantics
+      are identical, but worth remembering when interpreting diagnostics.
+    """
+
+    def select(self, customer_location=None):
+        idle_drivers = self.driver_repository.find_available_drivers()
+        restaurants = self.restaurant_repository.find_all()
+
+        # Branch A: pair_queued (D=0 with pair-eligible anchor).
+        # Checked first so that when pairing is enabled and an anchor exists,
+        # the active push takes precedence over the D=0 fallback.
+        if self.config.pairing_enabled:
+            best_pair = self._find_best_pair(customer_location, restaurants)
+            if best_pair is not None:
+                assert not idle_drivers, (
+                    "pair_immediate state reached: idle drivers and "
+                    "pair-eligible anchors coexist. This violates the "
+                    "assignment invariant (NOT D>0 AND O>0)."
+                )
+                selected = best_pair['restaurant']
+                self.logger.debug(
+                    f"ProximityWithPairPush [pair_queued]: selected restaurant "
+                    f"{selected.restaurant_id} "
+                    f"(pair route_cost={best_pair['route_cost']:.3f}km)"
+                )
+                return selected, 'pair_queued'
+
+        # Branch B: curated (D>0). Min R-D only, matching Policy X.
+        if idle_drivers:
+            best_restaurant = None
+            best_dist = float('inf')
+            for r in restaurants:
+                min_dist = min(
+                    calculate_distance(r.location, d.location)
+                    for d in idle_drivers
+                )
+                if min_dist < best_dist:
+                    best_dist = min_dist
+                    best_restaurant = r
+            self.logger.debug(
+                f"ProximityWithPairPush [curated]: selected restaurant "
+                f"{best_restaurant.restaurant_id} "
+                f"(nearest idle driver dist={best_dist:.3f}km)"
+            )
+            return best_restaurant, 'curated'
+
+        # Branch C: fallback (D=0, no pair-eligible anchor). No signal available.
+        # Return None so order_arrival_service samples uniformly.
+        self.logger.debug(
+            "ProximityWithPairPush [fallback]: no signal available "
+            "(D=0 and no pair-eligible anchor)"
+        )
+        return None, 'fallback'    
