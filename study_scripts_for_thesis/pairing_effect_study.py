@@ -596,11 +596,33 @@ print(f"\n✓ Analysis pipeline complete for all {len(design_analysis_results)} 
 print(f"✓ Results stored in 'design_analysis_results'")
 
 # %% CELL 16: Extract and Present Key Metrics (TABLE FORMAT)
+#
+# MIGRATION NOTE — dual unit conventions for the queue series.
+#
+# The queue is reported under two conventions during the (ii) -> (iii) migration:
+#
+#   (entities) : original series. A pending pair counts as 1. This is the
+#                dispatcher's decision load. Under arrival-time pairing the
+#                pending pool is mixed (singles + pairs), so this convention
+#                is NOT comparable to a mechanism where the pool is all singles.
+#
+#   (orders)   : new series. A pending pair counts as 2. This is the
+#                customer-facing backlog and the mechanism-invariant series.
+#                Under assignment-time bundling the pending pool is all
+#                singles and the two conventions coincide.
+#
+# Both are printed side by side here for internal validation only. The thesis
+# table should eventually carry the (orders) convention alone.
+#
+# Built-in control: under pairing OFF no Pair entity is ever created, so the
+# two conventions must agree exactly on those rows. See the validation block.
+
 print("\n" + "="*80)
 print("KEY PERFORMANCE METRICS: PAIRING EFFECT COMPARISON")
 print("="*80)
 
 import re
+
 
 def extract_ratio_and_pairing(design_name):
     """Extract arrival interval ratio and pairing condition from design point name."""
@@ -612,80 +634,109 @@ def extract_ratio_and_pairing(design_name):
         return ratio, pairing_condition
     return None, None
 
-# Extract comprehensive metrics for table
+
+def point_and_ci_width(metric_dict, default_estimate=0):
+    """
+    Extract point estimate and CI half-width from a statistics_with_cis entry.
+
+    Args:
+        metric_dict: Dict with 'point_estimate' and 'confidence_interval' keys
+        default_estimate: Value returned when the metric is absent. Pass None
+                          for metrics that are legitimately undefined in some
+                          design points (e.g. pairing rate under pairing OFF).
+
+    Returns:
+        tuple: (estimate, ci_half_width). ci_half_width is None when no CI
+               is available, so callers can distinguish "no CI" from "zero width".
+    """
+    estimate = metric_dict.get('point_estimate', default_estimate)
+    ci = metric_dict.get('confidence_interval', [None, None])
+
+    if ci[0] is not None and ci[1] is not None:
+        ci_half_width = (ci[1] - ci[0]) / 2
+    else:
+        ci_half_width = None
+
+    return estimate, ci_half_width
+
+
+def fmt(estimate, ci_half_width, width=6, decimals=2):
+    """Format 'estimate ± half_width', tolerating missing values."""
+    if estimate is None:
+        return "N/A"
+    if ci_half_width is None:
+        return f"{estimate:{width}.{decimals}f}"
+    return f"{estimate:{width}.{decimals}f} ± {ci_half_width:{width}.{decimals}f}"
+
+
+def fmt_pct(estimate, ci_half_width, decimals=2):
+    """Format a [0,1] rate as 'xx.xx ± y.yy%', tolerating missing values."""
+    if estimate is None:
+        return "N/A"
+    if ci_half_width is None:
+        return f"{estimate*100:5.{decimals}f}%"
+    return f"{estimate*100:5.{decimals}f} ± {ci_half_width*100:5.{decimals}f}%"
+
+
+# =============================================================================
+# EXTRACT METRICS
+# =============================================================================
 metrics_data = []
 
 for design_name, analysis_result in design_analysis_results.items():
     ratio, pairing_condition = extract_ratio_and_pairing(design_name)
     if ratio is None:
         continue
-    
+
     stats_with_cis = analysis_result.get('statistics_with_cis', {})
-    
+
     # =====================================================================
     # ASSIGNMENT TIME STATISTICS (nested under order_metrics)
     # =====================================================================
     order_metrics = stats_with_cis.get('order_metrics', {})
     assignment_time = order_metrics.get('assignment_time', {})
-    
-    # Mean of means with CI
-    mean_of_means = assignment_time.get('mean_of_means', {})
-    mom_estimate = mean_of_means.get('point_estimate', 0)
-    mom_ci = mean_of_means.get('confidence_interval', [0, 0])
-    mom_ci_width = (mom_ci[1] - mom_ci[0]) / 2 if mom_ci[0] is not None else 0
-    
+    mom_estimate, mom_ci_width = point_and_ci_width(
+        assignment_time.get('mean_of_means', {}))
+
     # =====================================================================
-    # QUEUE DYNAMICS METRICS
+    # QUEUE DYNAMICS METRICS — both unit conventions
     # =====================================================================
     queue_dynamics_metrics = stats_with_cis.get('queue_dynamics_metrics', {})
-    
-    # Growth Rate
-    growth_rate_metric = queue_dynamics_metrics.get('unassigned_entities_growth_rate', {})
-    growth_rate_estimate = growth_rate_metric.get('point_estimate', 0)
-    growth_rate_ci = growth_rate_metric.get('confidence_interval', [0, 0])
-    growth_rate_ci_width = (growth_rate_ci[1] - growth_rate_ci[0]) / 2 if growth_rate_ci[0] is not None else 0
-    
-    # Average Queue Size
-    avg_queue = queue_dynamics_metrics.get('average_unassigned_entities', {})
-    avg_queue_estimate = avg_queue.get('point_estimate', 0)
-    avg_queue_ci = avg_queue.get('confidence_interval', [0, 0])
-    avg_queue_ci_width = (avg_queue_ci[1] - avg_queue_ci[0]) / 2 if avg_queue_ci[0] is not None else 0
-    
+
+    # Original: entity units (a pending pair counts as 1)
+    avg_queue_estimate, avg_queue_ci_width = point_and_ci_width(
+        queue_dynamics_metrics.get('average_unassigned_entities', {}))
+    growth_rate_estimate, growth_rate_ci_width = point_and_ci_width(
+        queue_dynamics_metrics.get('unassigned_entities_growth_rate', {}))
+
+    # New: order units (a pending pair counts as 2)
+    avg_queue_orders_estimate, avg_queue_orders_ci_width = point_and_ci_width(
+        queue_dynamics_metrics.get('average_unassigned_order_units', {}))
+    growth_rate_orders_estimate, growth_rate_orders_ci_width = point_and_ci_width(
+        queue_dynamics_metrics.get('unassigned_order_units_growth_rate', {}))
+
     # =====================================================================
     # SYSTEM STATE METRICS
     # =====================================================================
     system_state_metrics = stats_with_cis.get('system_state_metrics', {})
-    
-    # Driver Utilization
+
     driver_utilization = system_state_metrics.get('driver_utilization', {})
-    driver_utilization_mom = driver_utilization.get('mean_of_means', {})
-    driver_utilization_estimate = driver_utilization_mom.get('point_estimate', 0)
-    driver_utilization_ci = driver_utilization_mom.get('confidence_interval', [0, 0])
-    driver_utilization_ci_width = (driver_utilization_ci[1] - driver_utilization_ci[0]) / 2 if driver_utilization_ci[0] is not None else 0
-    
+    driver_utilization_estimate, driver_utilization_ci_width = point_and_ci_width(
+        driver_utilization.get('mean_of_means', {}))
+
     # =====================================================================
     # SYSTEM METRICS
     # =====================================================================
     system_metrics = stats_with_cis.get('system_metrics', {})
-    
-    # Pairing Rate (only for pairing=ON)
-    pairing_rate_data = system_metrics.get('system_pairing_rate', {})
-    pairing_rate_estimate = pairing_rate_data.get('point_estimate', None)
-    pairing_rate_ci = pairing_rate_data.get('confidence_interval', [None, None])
-    if pairing_rate_ci[0] is not None and pairing_rate_ci[1] is not None:
-        pairing_rate_ci_width = (pairing_rate_ci[1] - pairing_rate_ci[0]) / 2
-    else:
-        pairing_rate_ci_width = None
-    
+
+    # Pairing Rate (only defined for pairing=ON)
+    pairing_rate_estimate, pairing_rate_ci_width = point_and_ci_width(
+        system_metrics.get('system_pairing_rate', {}), default_estimate=None)
+
     # Immediate Assignment Rate
-    immediate_assignment_rate_data = system_metrics.get('immediate_assignment_rate', {})
-    immediate_assignment_rate_estimate = immediate_assignment_rate_data.get('point_estimate', None)
-    immediate_assignment_rate_ci = immediate_assignment_rate_data.get('confidence_interval', [None, None])
-    if immediate_assignment_rate_ci[0] is not None and immediate_assignment_rate_ci[1] is not None:
-        immediate_assignment_rate_ci_width = (immediate_assignment_rate_ci[1] - immediate_assignment_rate_ci[0]) / 2
-    else:
-        immediate_assignment_rate_ci_width = None
-    
+    immediate_assignment_rate_estimate, immediate_assignment_rate_ci_width = point_and_ci_width(
+        system_metrics.get('immediate_assignment_rate', {}), default_estimate=None)
+
     # =====================================================================
     # BUILD ROW
     # =====================================================================
@@ -695,11 +746,16 @@ for design_name, analysis_result in design_analysis_results.items():
         # Assignment time
         'mom_estimate': mom_estimate,
         'mom_ci_width': mom_ci_width,
-        # Queue dynamics
+        # Queue dynamics — entity units (original)
         'avg_queue_estimate': avg_queue_estimate,
         'avg_queue_ci_width': avg_queue_ci_width,
         'growth_rate_estimate': growth_rate_estimate,
         'growth_rate_ci_width': growth_rate_ci_width,
+        # Queue dynamics — order units (new)
+        'avg_queue_orders_estimate': avg_queue_orders_estimate,
+        'avg_queue_orders_ci_width': avg_queue_orders_ci_width,
+        'growth_rate_orders_estimate': growth_rate_orders_estimate,
+        'growth_rate_orders_ci_width': growth_rate_orders_ci_width,
         # System state
         'driver_utilization_estimate': driver_utilization_estimate,
         'driver_utilization_ci_width': driver_utilization_ci_width,
@@ -713,81 +769,167 @@ for design_name, analysis_result in design_analysis_results.items():
 # Sort by ratio then pairing condition (no_pairing first, then pairing)
 metrics_data.sort(key=lambda x: (x['ratio'], 0 if x['pairing_condition'] == 'no_pairing' else 1))
 
-# =========================================================================
+
+# =============================================================================
+# UNIT-CONVENTION VALIDATION
+# =============================================================================
+# Pairing OFF: unassigned_pairs == 0 at every snapshot, so the two conventions
+#   must be identical. Any delta means count_unassigned_order_units() is wired
+#   wrong (most likely double-counting orders that are in OrderState.PAIRED).
+#
+# Pairing ON: orders >= entities always, with amplification bounded in [1, 2].
+#   Factor -> 1 means the pending pool is single-dominated.
+#   Factor -> 2 means the pending pool is pair-dominated.
+#   Anything outside [1, 2] is a bug, not a finding.
+#
+# The amplification factor is itself informative: it measures the pair fraction
+# of the PENDING POOL, which is a different quantity from the pairing rate
+# (a fraction of DELIVERED orders) and is not otherwise instrumented.
+
+print("\n🔍 UNIT-CONVENTION VALIDATION")
+print("-"*100)
+print(f"  {'Ratio':>5}  {'Pairing':>7}  {'Entities':>9}  {'Orders':>9}  {'Amplification':>13}  {'Status':>34}")
+print("-"*100)
+
+validation_failed = False
+
+for row in metrics_data:
+    entities = row['avg_queue_estimate']
+    orders = row['avg_queue_orders_estimate']
+
+    if row['pairing_condition'] == 'no_pairing':
+        delta = abs(orders - entities)
+        row_ok = delta < 1e-9
+        amplification_str = "1.000x (exact)"
+        if row_ok:
+            status = "OK"
+        else:
+            status = f"FAIL — delta={delta:.3e}, pairs leaking"
+        pairing_label = "OFF"
+    else:
+        if entities > 1e-9:
+            amplification = orders / entities
+        else:
+            amplification = 1.0
+        row_ok = (1.0 - 1e-9) <= amplification <= (2.0 + 1e-9)
+        amplification_str = f"{amplification:.3f}x"
+        if row_ok:
+            status = "OK"
+        else:
+            status = "FAIL — outside [1, 2]"
+        pairing_label = "ON"
+
+    if not row_ok:
+        validation_failed = True
+
+    print(f"  {row['ratio']:>5.1f}  {pairing_label:>7}  {entities:>9.2f}  {orders:>9.2f}  "
+          f"{amplification_str:>13}  {status:>34}")
+
+print("-"*100)
+if validation_failed:
+    print("  ❌ VALIDATION FAILED — do not interpret the table below.")
+else:
+    print("  ✓ Validation passed: OFF rows exact, ON amplification within [1, 2].")
+print("-"*100)
+
+
+# =============================================================================
 # PRINT FORMATTED TABLE: GROUPED BY PAIRING CONDITION
-# =========================================================================
+# =============================================================================
+# Header widths are declared once and reused by the row formatter so the rule
+# lines always match the content width.
+
+header_line_1 = (f"  {'Ratio':>5}  {'Pairing':>7}  {'Assignment Time':>16}  "
+                 f"{'Avg Queue Size (entities)':>25}  {'Avg Queue Size (orders)':>25}  "
+                 f"{'Growth Rate (entities)':>22}  {'Growth Rate (orders)':>22}  "
+                 f"{'Driver Utilization':>18}  {'Immediate Assign.':>18}  {'Pairing Rate':>16}")
+
+header_line_2 = (f"  {'':>5}  {'Status':>7}  {'(mean ± CI)':>16}  "
+                 f"{'(mean ± CI)':>25}  {'(mean ± CI)':>25}  "
+                 f"{'(entities/min)':>22}  {'(orders/min)':>22}  "
+                 f"{'(mean ± CI)':>18}  {'(mean ± CI)':>18}  {'(mean ± CI)':>16}")
+
+table_width = len(header_line_1)
+
 print("\n🎯 KEY PERFORMANCE METRICS: GROUPED BY PAIRING CONDITION")
-print("="*195)
-print(" Ratio  Pairing    Assignment Time    Avg Queue Size    Growth Rate       Driver Utilization   Immediate Assign.    Pairing Rate")
-print("        Status       (mean ± CI)        (mean ± CI)    (entities/min)        (mean ± CI)          (mean ± CI)        (mean ± CI)")
-print("="*195)
+print("="*table_width)
+print(header_line_1)
+print(header_line_2)
+print("="*table_width)
+
+
+def print_metrics_row(row):
+    """Render one design point across both unit conventions."""
+    assignment_str = fmt(row['mom_estimate'], row['mom_ci_width'], width=5, decimals=2)
+
+    avg_queue_str = fmt(row['avg_queue_estimate'],
+                        row['avg_queue_ci_width'], width=6, decimals=2)
+    avg_queue_orders_str = fmt(row['avg_queue_orders_estimate'],
+                               row['avg_queue_orders_ci_width'], width=6, decimals=2)
+
+    growth_rate_str = fmt(row['growth_rate_estimate'],
+                          row['growth_rate_ci_width'], width=7, decimals=4)
+    growth_rate_orders_str = fmt(row['growth_rate_orders_estimate'],
+                                 row['growth_rate_orders_ci_width'], width=7, decimals=4)
+
+    driver_util_str = fmt(row['driver_utilization_estimate'],
+                          row['driver_utilization_ci_width'], width=6, decimals=4)
+
+    imm_assign_str = fmt_pct(row['immediate_assignment_rate_estimate'],
+                             row['immediate_assignment_rate_ci_width'])
+    pairing_rate_str = fmt_pct(row['pairing_rate_estimate'],
+                               row['pairing_rate_ci_width'])
+
+    pairing_label = "ON" if row['pairing_condition'] == 'pairing' else "OFF"
+
+    print(f"  {row['ratio']:>5.1f}  {pairing_label:>7}  {assignment_str:>16}  "
+          f"{avg_queue_str:>25}  {avg_queue_orders_str:>25}  "
+          f"{growth_rate_str:>22}  {growth_rate_orders_str:>22}  "
+          f"{driver_util_str:>18}  {imm_assign_str:>18}  {pairing_rate_str:>16}")
+
 
 print("NO PAIRING:")
-print("-"*195)
+print("-"*table_width)
 for row in metrics_data:
     if row['pairing_condition'] == 'no_pairing':
-        ratio = row['ratio']
-        assignment_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
-        avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:6.2f}"
-        growth_rate_str = f"{row['growth_rate_estimate']:7.4f} ± {row['growth_rate_ci_width']:7.4f}"
-        driver_util_str = f"{row['driver_utilization_estimate']:6.4f} ± {row['driver_utilization_ci_width']:6.4f}"
-        
-        # Immediate assignment rate
-        if row['immediate_assignment_rate_estimate'] is not None and row['immediate_assignment_rate_ci_width'] is not None:
-            imm_assign_str = f"{row['immediate_assignment_rate_estimate']*100:5.2f} ± {row['immediate_assignment_rate_ci_width']*100:5.2f}%"
-        elif row['immediate_assignment_rate_estimate'] is not None:
-            imm_assign_str = f"{row['immediate_assignment_rate_estimate']*100:5.2f}%"
-        else:
-            imm_assign_str = "N/A"
-        
-        print(f"  {ratio:4.1f}   OFF      {assignment_str:>16s}   {avg_queue_str:>17s}   {growth_rate_str:>17s}   {driver_util_str:>18s}   {imm_assign_str:>18s}        N/A")
+        print_metrics_row(row)
 
 print("\nPAIRING ENABLED:")
-print("-"*195)
+print("-"*table_width)
 for row in metrics_data:
     if row['pairing_condition'] == 'pairing':
-        ratio = row['ratio']
-        assignment_str = f"{row['mom_estimate']:5.2f} ± {row['mom_ci_width']:5.2f}"
-        avg_queue_str = f"{row['avg_queue_estimate']:6.2f} ± {row['avg_queue_ci_width']:6.2f}"
-        growth_rate_str = f"{row['growth_rate_estimate']:7.4f} ± {row['growth_rate_ci_width']:7.4f}"
-        driver_util_str = f"{row['driver_utilization_estimate']:6.4f} ± {row['driver_utilization_ci_width']:6.4f}"
-        
-        # Immediate assignment rate
-        if row['immediate_assignment_rate_estimate'] is not None and row['immediate_assignment_rate_ci_width'] is not None:
-            imm_assign_str = f"{row['immediate_assignment_rate_estimate']*100:5.2f} ± {row['immediate_assignment_rate_ci_width']*100:5.2f}%"
-        elif row['immediate_assignment_rate_estimate'] is not None:
-            imm_assign_str = f"{row['immediate_assignment_rate_estimate']*100:5.2f}%"
-        else:
-            imm_assign_str = "N/A"
-        
-        # Pairing rate
-        if row['pairing_rate_estimate'] is not None and row['pairing_rate_ci_width'] is not None:
-            pr_str = f"{row['pairing_rate_estimate']*100:5.2f} ± {row['pairing_rate_ci_width']*100:5.2f}%"
-        elif row['pairing_rate_estimate'] is not None:
-            pr_str = f"{row['pairing_rate_estimate']*100:5.2f}%"
-        else:
-            pr_str = "N/A"
-        
-        print(f"  {ratio:4.1f}   ON       {assignment_str:>16s}   {avg_queue_str:>17s}   {growth_rate_str:>17s}   {driver_util_str:>18s}   {imm_assign_str:>18s}   {pr_str:>16s}")
+        print_metrics_row(row)
 
-print("="*195)
+print("="*table_width)
 
-# =========================================================================
+
+# =============================================================================
 # INTERPRETATION GUIDE
-# =========================================================================
+# =============================================================================
 print("\n📊 METRIC INTERPRETATION GUIDE:")
 print("-"*80)
 print("ASSIGNMENT TIME:")
 print("  • Mean of Means: Average customer wait time (with 95% CI)")
 print()
-print("QUEUE DYNAMICS METRICS:")
-print("  • Avg Queue Size: Time-weighted mean unassigned entities")
-print("  • Growth Rate: System trajectory (≈0 = bounded, >0 = deteriorating)")
+print("QUEUE DYNAMICS METRICS — two unit conventions:")
+print("  • Avg Queue Size (entities): a pending pair counts as 1.")
+print("      Dispatcher decision load. NOT comparable across pairing mechanisms.")
+print("      This is the original series behind all published Study 2 numbers.")
+print("  • Avg Queue Size (orders):   a pending pair counts as 2.")
+print("      Customer-facing backlog. Mechanism-invariant; the series Little's")
+print("      Law applies to, and the one to carry into (iii).")
+print("  • Growth Rate: system trajectory (≈0 = bounded, >0 = deteriorating).")
+print("      Same two conventions. Note the (orders) growth rate is up to 2x the")
+print("      (entities) growth rate under pairing — check whether any bounded/")
+print("      deteriorating classification changes sign or crosses zero.")
+print("  • Under pairing OFF the two conventions are identical by construction.")
 print()
 print("SYSTEM EFFICIENCY METRICS:")
 print("  • Driver Utilization: Fraction of active drivers in DELIVERING state")
 print("  • Immediate Assign. Rate: % of orders assigned instantly (assignment_time = 0)")
 print("  • Pairing Rate: % of deliveries with paired orders (with 95% CI)")
+print("      Note: fraction of DELIVERED orders. Distinct from the pending-pool")
+print("      pair fraction, which the validation block's amplification factor measures.")
 print()
 print("REGIME REFERENCE (from Study 1):")
 print("  • Stable (ratio ≤4.0):        Low assignment time, growth ≈0")
@@ -799,11 +941,18 @@ print("  • Does pairing shift the regime boundary (compare growth rates at 5.5
 print("  • Where is pairing benefit greatest (compare assignment times across ratios)?")
 print("  • How do queue size and utilization respond to pairing?")
 print("  • Does pairing improve immediate assignment rates?")
+print()
+print("MIGRATION QUESTIONS (this run):")
+print("  • Do the OFF rows match exactly? If not, the order-unit metric is wrong.")
+print("  • How does amplification vary with ratio? Rising amplification = the")
+print("    pending pool becomes pair-dominated under load.")
+print("  • Does the OFF/ON queue reduction shrink when measured in orders, and")
+print("    by how much at each ratio?")
+print("  • Does any growth rate change its bounded/deteriorating classification?")
 print("="*80)
 
 print("\n✓ Metric extraction complete")
 print("✓ Results ready for pairing effect analysis")
-
 # %% CELL 17: Ad-hoc Analysis (Placeholder)
 """
 PLACEHOLDER FOR AD-HOC ANALYSIS
