@@ -175,24 +175,34 @@ METRIC_CONFIGURATIONS = {
     # - Example: growth_rate needs (terminal - initial) / window_length
     
     'queue_dynamics_metrics': {
-        'aggregation_pattern': 'one_level',
-        'metric_module': 'delivery_sim.metrics.system.queue_dynamics_metrics',
-        'metric_function': 'calculate_all_queue_dynamics_metrics',
-        'data_key': None,  # Uses analysis_data directly
-        'ci_config': [
-            {
-                'metric_name': 'unassigned_entities_growth_rate',
-                'target_statistic': 'mean',
-                'construct_ci': True
-            },
-            {
-                'metric_name': 'average_unassigned_entities',  # NEW METRIC
-                'target_statistic': 'mean',
-                'construct_ci': True
-            }
-        ],
-        'description': 'Queue dynamics metrics (growth rate, average queue size, trend analysis)'
-    },
+            'aggregation_pattern': 'one_level',
+            'metric_module': 'delivery_sim.metrics.system.queue_dynamics_metrics',
+            'metric_function': 'calculate_all_queue_dynamics_metrics',
+            'data_key': None,
+            'ci_config': [
+                {
+                    'metric_name': 'unassigned_entities_growth_rate',
+                    'target_statistic': 'mean',
+                    'construct_ci': True
+                },
+                {
+                    'metric_name': 'average_unassigned_entities',
+                    'target_statistic': 'mean',
+                    'construct_ci': True
+                },
+                {
+                    'metric_name': 'unassigned_order_units_growth_rate',
+                    'target_statistic': 'mean',
+                    'construct_ci': True
+                },
+                {
+                    'metric_name': 'average_unassigned_order_units',
+                    'target_statistic': 'mean',
+                    'construct_ci': True
+                }
+            ],
+            'description': 'Queue dynamics metrics in entity units and order units'
+        },
     
     # ==========================================================================
     # ONE-LEVEL PATTERN: CURATION METRICS

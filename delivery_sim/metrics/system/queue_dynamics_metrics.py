@@ -1,35 +1,19 @@
 # delivery_sim/metrics/system/queue_dynamics_metrics.py
-"""
-Queue dynamics metrics for system state analysis.
-
-These metrics capture the temporal dynamics of queue behavior,
-particularly for diagnosing system deterioration vs stability.
-"""
-
-def calculate_unassigned_entities_growth_rate(analysis_data):
+def calculate_growth_rate(analysis_data, series_key):
     """
-    Calculate growth rate of unassigned delivery entities.
-    
-    Growth rate measures the trend/trajectory of queue accumulation:
-    - Growth ≈ 0: Bounded system (stable or oscillatory)
-    - Growth > 0: Unbounded accumulation (deteriorating system)
-    
-    Calculation: (terminal_value - initial_value) / window_length
-    
-    This simple endpoint-based approach is:
-    - Robust across replications (noise averages out)
-    - Appropriate for linear growth patterns
-    - Valid for oscillatory systems (random endpoints average to ≈0)
-    
+    Calculate growth rate of a queue series.
+
     Args:
         analysis_data: AnalysisData object with post_warmup_snapshots
-        
+        series_key: Snapshot key naming the series, e.g.
+                    'unassigned_delivery_entities' (entity units) or
+                    'unassigned_order_units' (order units)
+
     Returns:
-        dict: Contains growth_rate (entities/minute) and supporting metadata
+        dict: growth_rate (units/minute) and supporting metadata
     """
     snapshots = analysis_data.post_warmup_snapshots
-    
-    # Handle edge case of insufficient data
+
     if len(snapshots) < 2:
         return {
             'growth_rate': 0.0,
@@ -38,27 +22,23 @@ def calculate_unassigned_entities_growth_rate(analysis_data):
             'window_length': 0.0,
             'n_snapshots': len(snapshots)
         }
-    
-    # Extract unassigned entities time series
-    unassigned_series = [s['unassigned_delivery_entities'] for s in snapshots]
-    
-    # Get endpoint values
-    initial_value = unassigned_series[0]  # Value at warmup end
-    terminal_value = unassigned_series[-1]  # Value at simulation end
-    
-    # Calculate time window length
+
+    series = [s[series_key] for s in snapshots]
+
+    initial_value = series[0]
+    terminal_value = series[-1]
+
     initial_time = snapshots[0]['timestamp']
     terminal_time = snapshots[-1]['timestamp']
     window_length = terminal_time - initial_time
-    
-    # Calculate growth rate
+
     if window_length > 0:
         growth_rate = (terminal_value - initial_value) / window_length
     else:
         growth_rate = 0.0
-    
+
     return {
-        'growth_rate': growth_rate,  # entities per minute
+        'growth_rate': growth_rate,
         'initial_value': initial_value,
         'terminal_value': terminal_value,
         'window_length': window_length,
@@ -66,65 +46,65 @@ def calculate_unassigned_entities_growth_rate(analysis_data):
     }
 
 
-def calculate_average_unassigned_entities(analysis_data):
+def calculate_average_queue_size(analysis_data, series_key):
     """
-    Calculate average (mean) number of unassigned delivery entities over the post-warmup period.
-    
-    This metric provides a simple measure of queue size over time:
-    - Low average: System handles load well
-    - High average: Chronic queue buildup (even if stable)
-    
-    Complements growth_rate:
-    - growth_rate ≈ 0, low average: healthy system
-    - growth_rate ≈ 0, high average: stable but congested
-    - growth_rate > 0: deteriorating (average less meaningful)
-    
+    Calculate time-average queue size for a series over the post-warmup period.
+
     Args:
         analysis_data: AnalysisData object with post_warmup_snapshots
-        
+        series_key: Snapshot key naming the series
+
     Returns:
-        dict: Contains average_queue_size and supporting metadata
+        dict: average_queue_size and supporting metadata
     """
     snapshots = analysis_data.post_warmup_snapshots
-    
-    # Handle edge case of no data
+
     if len(snapshots) == 0:
         return {
             'average_queue_size': 0.0,
             'n_snapshots': 0
         }
-    
-    # Extract unassigned entities time series
-    unassigned_series = [s['unassigned_delivery_entities'] for s in snapshots]
-    
-    # Calculate average
-    average_queue_size = sum(unassigned_series) / len(unassigned_series)
-    
+
+    series = [s[series_key] for s in snapshots]
+    average_queue_size = sum(series) / len(series)
+
     return {
         'average_queue_size': average_queue_size,
         'n_snapshots': len(snapshots)
     }
 
 
+# ---- Backward-compatible wrappers (entity units) ----
+
+def calculate_unassigned_entities_growth_rate(analysis_data):
+    return calculate_growth_rate(analysis_data, 'unassigned_delivery_entities')
+
+
+def calculate_average_unassigned_entities(analysis_data):
+    return calculate_average_queue_size(analysis_data, 'unassigned_delivery_entities')
+
+
 def calculate_all_queue_dynamics_metrics(analysis_data):
     """
     Calculate all queue dynamics metrics for a replication.
-    
-    This is the main entry point called by the analysis pipeline.
-    Returns a dict of scalar metrics (one-level pattern).
-    
-    Args:
-        analysis_data: AnalysisData object
-        
-    Returns:
-        dict: All queue dynamics metrics as scalars
+
+    Both unit conventions are reported:
+    - *_entities:    entity units, a pending pair counts as 1 (dispatcher load).
+                     Preserved for continuity with completed (ii) studies.
+    - *_order_units: order units, a pending pair counts as 2 (customer backlog).
+                     Mechanism-invariant; the series to use for (ii) vs (iii).
+
+    Under assignment-time bundling the two coincide.
     """
-    growth_result = calculate_unassigned_entities_growth_rate(analysis_data)
-    average_result = calculate_average_unassigned_entities(analysis_data)
-    
-    # Return only the scalar metrics for pipeline aggregation
-    # Supporting metadata is available but not needed for results table
+    entities_growth = calculate_growth_rate(analysis_data, 'unassigned_delivery_entities')
+    entities_average = calculate_average_queue_size(analysis_data, 'unassigned_delivery_entities')
+
+    order_units_growth = calculate_growth_rate(analysis_data, 'unassigned_order_units')
+    order_units_average = calculate_average_queue_size(analysis_data, 'unassigned_order_units')
+
     return {
-        'unassigned_entities_growth_rate': growth_result['growth_rate'],
-        'average_unassigned_entities': average_result['average_queue_size']
+        'unassigned_entities_growth_rate': entities_growth['growth_rate'],
+        'average_unassigned_entities': entities_average['average_queue_size'],
+        'unassigned_order_units_growth_rate': order_units_growth['growth_rate'],
+        'average_unassigned_order_units': order_units_average['average_queue_size']
     }

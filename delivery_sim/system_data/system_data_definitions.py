@@ -43,6 +43,7 @@ class SystemDataDefinitions:
             # Warmup detection and supply-demand dynamics metrics
             'active_drivers': self.count_active_drivers(),
             'unassigned_delivery_entities': self.count_unassigned_delivery_entities(),
+            'unassigned_order_units': self.count_unassigned_order_units(),
             
             # Capacity utilization metrics
             'driver_utilization': self.calculate_driver_utilization()
@@ -135,3 +136,29 @@ class SystemDataDefinitions:
         unassigned_pairs = len(self.repositories['pair'].find_by_state(PairState.CREATED))
         
         return unassigned_orders + unassigned_pairs
+    
+    def count_unassigned_order_units(self):
+        """
+        Count unassigned backlog in ORDER UNITS (a pending pair counts as 2).
+
+        Contrast with count_unassigned_delivery_entities(), which counts in
+        ENTITY units (a pending pair counts as 1) and therefore measures the
+        dispatcher's decision load, not the customer-facing backlog.
+
+        This is the mechanism-invariant queue series. Under arrival-time pairing
+        the pool is mixed (singles + pairs); under assignment-time bundling the
+        pool is all singles and this metric coincides with 'unassigned_orders'.
+        Only this series is comparable across the two mechanisms.
+
+        Note: OrderState.CREATED excludes paired orders (PairingService
+        transitions members to OrderState.PAIRED at pair formation), so the
+        two terms below are disjoint and 2x on pairs is correct, not
+        double-counting.
+
+        Returns:
+            int: Number of unassigned orders, counting pair members individually
+        """
+        unassigned_orders = len(self.repositories['order'].find_by_state(OrderState.CREATED))
+        unassigned_pairs = len(self.repositories['pair'].find_by_state(PairState.CREATED))
+
+        return unassigned_orders + 2 * unassigned_pairs
