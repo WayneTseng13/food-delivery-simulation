@@ -3,240 +3,182 @@
 Priority Scoring System for Food Delivery Assignment Decisions
 
 This module implements a multi-criteria scoring system that evaluates
-driver-entity assignment opportunities based on distance efficiency,
-throughput optimization, and fairness considerations.
+assignment opportunities based on distance efficiency, throughput optimization,
+and fairness considerations.
+
+--- Scalar interface (mechanism iii) ---
+
+The scorer is a pure function of three scalars:
+
+    calculate_priority_score(total_distance, num_orders, wait_time)
+
+It knows nothing about drivers, orders, pairs, options, EntityType, or route
+geometry. The caller (AssignmentService) is responsible for computing:
+
+  - total_distance : full travel distance of the candidate assignment, in km.
+                     For a solo option: driver -> restaurant -> customer.
+                     For a bundle option: driver leg + best pair route, obtained
+                     from route_evaluator.evaluate_complete with the driver known.
+  - num_orders     : 1 for a solo option, 2 for a bundle option.
+  - wait_time      : age of the oldest order in the option (now - earliest arrival),
+                     in minutes.
+
+Why scalar. Under arrival-time pairing (mechanism ii) the scorer took (driver,
+entity), branched on entity_type, and called evaluate_complete internally to
+recover a pair's distance -- duplicating the route evaluation the assignment step
+also performed. Under assignment-time bundling the enumeration already computes
+each option's distance and sequence against the winning driver, so the scorer
+recomputing distance would be pure waste (~250 route evaluations per dispatch).
+
+Collapsing the scorer to three scalars removes the duplicate route call, removes
+all EntityType branching (the scorer never needed to know what a Pair is), and
+makes the score a provably identical function of the same arguments across both
+mechanisms -- the property the (ii)-vs-(iii) comparison depends on.
 
 Configuration is handled by ScoringConfig in configuration.py.
-Infrastructure analysis (like typical_distance calculation) is now handled 
-by the infrastructure_analysis module for better separation of concerns.
+Infrastructure analysis (typical_distance) is handled by infrastructure_analysis.
 """
 
-import numpy as np
-from delivery_sim.utils.location_utils import calculate_distance
-from delivery_sim.utils.entity_type_utils import EntityType
 from delivery_sim.utils.logging_system import get_logger
-from delivery_sim.utils.route_evaluator import evaluate_complete
 
 
 class PriorityScorer:
     """
-    Main scoring system that evaluates driver-entity assignment opportunities.
-    
+    Multi-criteria scorer for assignment opportunities.
+
+    Evaluates a candidate assignment described by three scalars against the
+    configured distance / throughput / fairness weights. Absolute normalization
+    (no dependence on the other candidates) means an option's score is invariant
+    to how many other options are enumerated alongside it.
     """
-    
+
     def __init__(self, scoring_config, typical_distance, env):
         """
         Initialize scorer with configuration and infrastructure characteristics.
-        
+
         Args:
             scoring_config: ScoringConfig instance from configuration.py
             typical_distance: Pre-calculated typical distance for this infrastructure
-            env: SimPy environment for this replication
+            env: SimPy environment for this replication (retained for logging context)
         """
         self.config = scoring_config
         self.typical_distance = typical_distance
         self.env = env
         self.logger = get_logger("utils.priority_scorer")
-        
-        self.logger.debug(f"PriorityScorer initialized with typical_distance={typical_distance:.3f}km")
-    
-    def calculate_priority_score(self, driver, entity):
+
+        self.logger.debug(
+            f"PriorityScorer initialized with typical_distance={typical_distance:.3f}km")
+
+    def calculate_priority_score(self, total_distance, num_orders, wait_time):
         """
-        Calculate priority score for a driver-entity assignment.
-        
+        Calculate the priority score for a candidate assignment.
+
         Args:
-            driver: Driver being evaluated
-            entity: Order or Pair being evaluated
-            
+            total_distance: Full travel distance of the assignment, in km
+            num_orders: Number of orders in the assignment (1 or 2)
+            wait_time: Age of the oldest order in the assignment, in minutes
+
         Returns:
             tuple: (priority_score_0_to_100, components_dictionary)
+
+            The components dictionary carries the sub-scores and the raw inputs so
+            the caller can store them on the DeliveryUnit and, for bundle options,
+            attach the chosen route sequence before creating the assignment.
         """
-        # Calculate total distance once and cache it
-        total_distance = self._calculate_total_distance(driver, entity)
-        
-        # Calculate individual component scores (all in [0,1] range)
         distance_score = self._calculate_distance_score(total_distance)
-        throughput_score = self._calculate_throughput_score(entity)
-        fairness_score = self._calculate_fairness_score(entity)
-        
-        # Weighted combination
+        throughput_score = self._calculate_throughput_score(num_orders)
+        fairness_score = self._calculate_fairness_score(wait_time)
+
         combined_score = (
             self.config.weight_distance * distance_score +
             self.config.weight_throughput * throughput_score +
             self.config.weight_fairness * fairness_score
         )
-        
-        # Scale to 0-100 range for interpretability
+
         priority_score = combined_score * 100
-        
-        # Determine entity type and ID for logging
-        entity_type = entity.entity_type
-        entity_id = entity.order_id if entity_type == EntityType.ORDER else entity.pair_id
-        
-        # Log detailed calculation with entity information
-        self.logger.info(
-            f"[t={self.env.now:.2f}] Priority score calculation for {entity_type} {entity_id}: "
+
+        self.logger.debug(
+            f"[t={self.env.now:.2f}] Priority score: "
             f"distance={distance_score:.3f}, throughput={throughput_score:.3f}, "
-            f"fairness={fairness_score:.3f}, combined={priority_score:.2f}"
+            f"fairness={fairness_score:.3f}, combined={priority_score:.2f} "
+            f"(total_distance={total_distance:.3f}km, num_orders={num_orders}, "
+            f"wait={wait_time:.2f}min)"
         )
-        
-        # Return score and components for logging/analysis
+
         components = {
             "distance_score": distance_score,
             "throughput_score": throughput_score,
             "fairness_score": fairness_score,
             "combined_score_0_1": combined_score,
             "total_distance": total_distance,
-            "num_orders": self._get_order_count(entity),
-            "assignment_delay_minutes": self._calculate_assignment_delay(entity)  # Updated key name
+            "num_orders": num_orders,
+            "assignment_delay_minutes": wait_time
         }
-        
+
         return priority_score, components
-        
+
     def _calculate_distance_score(self, total_distance):
         """
-        Calculate distance efficiency score using two-step normalization.
-        
-        Distance is a relational measure that requires geographical contextualization.
-        The score represents how efficient this assignment is compared to typical
-        distances in this delivery area.
-        
-        Step 1: Contextualization - normalize by typical distance for this geography
-        Step 2: Performance assessment - apply universal acceptability standard
-        
-        Args:
-            total_distance (float): Pre-calculated total travel distance in km
-            
+        Distance efficiency score via two-step normalization.
+
+        Step 1 (contextualization): normalize by typical distance for this
+        geography, so scores are comparable across configurations of different
+        scale.
+
+        Step 2 (performance assessment): apply the universal acceptability
+        standard max_distance_ratio_multiplier.
+
+        Both steps use only config constants and the infrastructure-derived
+        typical_distance -- never the other candidates. This absolute
+        normalization is what makes an option's score independent of the size of
+        the option set, and therefore comparable across mechanisms.
+
         Returns:
-            float: Distance efficiency score in [0,1] range, where:
-                - 1.0 = perfect efficiency (zero distance)
-                - 0.5 = typical efficiency (1× typical distance) 
-                - 0.0 = unacceptable efficiency (≥2× typical distance)
+            float: Distance efficiency score in [0, 1], where
+                1.0 = zero distance, 0.5 = one typical distance,
+                0.0 = at or beyond max_distance_ratio_multiplier x typical.
         """
-        # Step 1: Contextualization (acknowledge geographical reality)
         distance_ratio = total_distance / self.typical_distance
-        
-        # Step 2: Performance assessment (apply universal standard)
         distance_score = max(0, 1 - distance_ratio / self.config.max_distance_ratio_multiplier)
-        
         return distance_score
 
-    def _calculate_throughput_score(self, entity):
+    def _calculate_throughput_score(self, num_orders):
         """
-        Calculate throughput optimization score based on order count.
-        
-        Throughput represents capacity utilization - how many orders can be
-        delivered in a single trip. This is an absolute measure with discrete
-        values since drivers can only handle 1 or 2 orders per trip.
-        
+        Throughput score via direct normalization.
+
+        Throughput is capacity utilization -- how many orders in one trip. It is
+        an absolute, discrete measure (drivers carry 1 or 2 orders), so no
+        geographical normalization applies.
+
         Args:
-            entity (Order or Pair): The delivery entity being evaluated
-            
+            num_orders: Number of orders in the assignment (1 or 2)
+
         Returns:
-            float: Throughput score in [0,1] range, where:
-                - 1.0 = maximum throughput (2 orders, full capacity)
-                - 0.5 = partial throughput (1 order, half capacity)
-                - Values are discrete, not continuous
+            float: Throughput score in [0, 1], where 1.0 = full capacity (2
+                orders) and 0.5 = half capacity (1 order).
         """
-        num_orders = self._get_order_count(entity)
-        max_orders = self.config.max_orders_per_trip
-        
-        # Direct proportion: num_orders / max_orders_per_trip
-        throughput_score = num_orders / max_orders
-        
+        throughput_score = num_orders / self.config.max_orders_per_trip
         return throughput_score
 
-    def _calculate_fairness_score(self, entity):
+    def _calculate_fairness_score(self, wait_time):
         """
-        Calculate fairness score based on assignment urgency.
-        
-        Fairness represents how urgently this entity needs assignment based on
-        how long it has been waiting for driver assignment. Longer assignment
-        delays indicate higher priority to maintain fairness in assignment opportunities.
-        
+        Fairness (wait-time urgency) score via direct normalization with ceiling.
+
+        Fairness reflects how urgently the assignment is needed, based on how long
+        the oldest order has waited. Time is absolute, so no geographical
+        normalization applies.
+
+        The caller supplies wait_time as the age of the oldest order in the
+        option (now - earliest arrival). For a bundle this is the earliest of the
+        two constituent arrivals, so an aged order makes any option containing it
+        more urgent rather than being diluted by a fresh companion.
+
         Args:
-            entity (Order or Pair): The delivery entity being evaluated
-            
+            wait_time: Age of the oldest order in the assignment, in minutes
+
         Returns:
-            float: Fairness urgency score in [0,1] range, where:
-                - 0.0 = just arrived, no assignment urgency
-                - 0.5 = moderate urgency (e.g., 15 min delay if max_acceptable=30 min)
-                - 1.0 = maximum urgency (≥max_acceptable delay, critical assignment priority)
+            float: Fairness score in [0, 1], where 0.0 = just arrived and
+                1.0 = at or beyond max_acceptable_delay.
         """
-        assignment_delay = self._calculate_assignment_delay(entity)
-        max_acceptable_delay = self.config.max_acceptable_delay
-        
-        # Direct normalization with ceiling: min(1.0, assignment_delay / max_acceptable_delay)
-        fairness_score = min(1.0, assignment_delay / max_acceptable_delay)
-        
+        fairness_score = min(1.0, wait_time / self.config.max_acceptable_delay)
         return fairness_score
-    
-    def _calculate_total_distance(self, driver, entity):
-        """
-        Calculate total travel distance for this assignment.
-        
-        For single orders: driver → restaurant → customer
-        For pairs: driver → first_location_in_optimal_sequence + pre_calculated_optimal_cost
-        
-        Args:
-            driver: Driver entity with location
-            entity: Order or Pair entity
-            
-        Returns:
-            float: Total travel distance in km
-        """
-        if entity.entity_type == EntityType.PAIR:
-                    # evaluate_complete jointly selects the best sequence and accounts for
-                    # driver position. This is what assignment will also do, so priority
-                    # scoring and assignment are aligned by construction.
-                    result = evaluate_complete(
-                        entity.order1.restaurant_location,
-                        entity.order1.customer_location,
-                        entity.order2.restaurant_location,
-                        entity.order2.customer_location,
-                        [driver],
-                    )
-                    self.logger.debug(
-                        f"Pair {entity.pair_id}: r_d={result['r_d']:.3f}km + "
-                        f"route_cost={result['route_cost']:.3f}km = {result['total_cost']:.3f}km"
-                    )
-                    return result['total_cost']
-            
-        else:  # EntityType.ORDER
-            # Driver → Restaurant → Customer
-            driver_to_restaurant = calculate_distance(driver.location, entity.restaurant_location)
-            restaurant_to_customer = calculate_distance(entity.restaurant_location, entity.customer_location)
-            total_distance = driver_to_restaurant + restaurant_to_customer
-            
-            self.logger.debug(f"Order {entity.order_id}: driver_to_restaurant={driver_to_restaurant:.3f}km + restaurant_to_customer={restaurant_to_customer:.3f}km = {total_distance:.3f}km")
-            return total_distance
-    
-    def _get_order_count(self, entity):
-        """Get number of orders in this entity."""
-        return 2 if entity.entity_type == EntityType.PAIR else 1
-    
-    def _calculate_assignment_delay(self, entity):
-        """
-        Calculate assignment delay from the customer fairness perspective.
-        
-        For single orders: Time from order arrival until current assignment consideration.
-        For pairs: Time from the EARLIEST order arrival (worst-case customer experience)
-                until current assignment consideration, regardless of when the pair was formed.
-        
-        This ensures fairness prioritization reflects the longest-waiting customer's experience,
-        not just when the delivery entity became available for assignment.
-        
-        Args:
-            entity (Order or Pair): The delivery entity being evaluated
-            
-        Returns:
-            float: Assignment delay in minutes from customer perspective
-        """
-        if entity.entity_type == EntityType.PAIR:
-            # Use earliest arrival time for pairs (when first order arrived)
-            earliest_arrival = min(entity.order1.arrival_time, entity.order2.arrival_time)
-        else:
-            earliest_arrival = entity.arrival_time
-        
-        assignment_delay_minutes = self.env.now - earliest_arrival
-        return assignment_delay_minutes
