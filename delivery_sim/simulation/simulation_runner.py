@@ -22,7 +22,6 @@ from delivery_sim.repositories.pair_repository import PairRepository
 from delivery_sim.repositories.delivery_unit_repository import DeliveryUnitRepository
 from delivery_sim.services.order_arrival_service import OrderArrivalService
 from delivery_sim.services.driver_arrival_service import DriverArrivalService
-from delivery_sim.services.pairing_service import PairingService
 from delivery_sim.services.assignment_service import AssignmentService
 from delivery_sim.services.delivery_service import DeliveryService
 from delivery_sim.services.driver_scheduling_service import DriverSchedulingService
@@ -311,16 +310,6 @@ class SimulationRunner:
                 config=self.config
             )
         }
-
-        # Create pairing service if enabled
-        if self.config.pairing_enabled:
-            services['pairing'] = PairingService(
-                env=self.env,
-                event_dispatcher=self.event_dispatcher,
-                order_repository=self.order_repository,
-                pair_repository=self.pair_repository,
-                config=self.config
-            )
 
         self.services = services
 
