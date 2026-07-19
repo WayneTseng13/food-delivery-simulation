@@ -69,10 +69,7 @@ class OperationalConfig:
         #   'state_adaptive'               — Policy X'   (R-D + R-C + active pair-push)
         valid_policies = {
             None,
-            'proximity',
             'state_adaptive',
-            'state_adaptive_no_pair_push',
-            'proximity_with_pair_push',
         }
         if curation_policy not in valid_policies:
             raise ValueError(

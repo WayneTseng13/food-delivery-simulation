@@ -32,12 +32,7 @@ from delivery_sim.system_data.system_data_collector import SystemDataCollector
 from delivery_sim.system_data.system_snapshot_repository import SystemSnapshotRepository
 from delivery_sim.utils.priority_scoring import PriorityScorer
 from delivery_sim.event_collectors.collector_registry import EventCollectorRegistry
-from delivery_sim.utils.curation_policy import (
-    ProximityCurationPolicy,
-    StateAdaptiveCurationPolicy,
-    StateAdaptiveNoPairPushCurationPolicy,
-    ProximityWithPairPushCurationPolicy,
-)
+from delivery_sim.utils.curation_policy import StateAdaptiveCurationPolicy
 
 class SimulationRunner:
     """
@@ -222,11 +217,7 @@ class SimulationRunner:
         # restaurant sampling itself.
         if self.config.curation_policy is None:
             curation_policy = None
-        elif self.config.curation_policy == 'proximity':
-            curation_policy = ProximityCurationPolicy(
-                restaurant_repository=self.restaurant_repository,
-                driver_repository=self.driver_repository,
-            )
+
         elif self.config.curation_policy == 'state_adaptive':
             curation_policy = StateAdaptiveCurationPolicy(
                 restaurant_repository=self.restaurant_repository,
@@ -234,20 +225,7 @@ class SimulationRunner:
                 order_repository=self.order_repository,
                 config=self.config,
             )
-        elif self.config.curation_policy == 'state_adaptive_no_pair_push':
-            curation_policy = StateAdaptiveNoPairPushCurationPolicy(
-                restaurant_repository=self.restaurant_repository,
-                driver_repository=self.driver_repository,
-                order_repository=self.order_repository,
-                config=self.config,
-            )
-        elif self.config.curation_policy == 'proximity_with_pair_push':
-            curation_policy = ProximityWithPairPushCurationPolicy(
-                restaurant_repository=self.restaurant_repository,
-                driver_repository=self.driver_repository,
-                order_repository=self.order_repository,
-                config=self.config,
-            )    
+            
         else:
             raise ValueError(
                 f"Unknown curation_policy: {self.config.curation_policy!r}"
