@@ -224,12 +224,7 @@ METRIC_CONFIGURATIONS = {
         'data_key': None,
         'ci_config': [
             {
-                'metric_name': 'curation_fallback_rate',
-                'target_statistic': 'mean',
-                'construct_ci': True
-            },
-            {
-                'metric_name': 'curation_pair_queued_rate',
+                'metric_name': 'curation_edge_manufacture_rate',
                 'target_statistic': 'mean',
                 'construct_ci': True
             },
