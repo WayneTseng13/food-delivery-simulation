@@ -32,7 +32,7 @@ from delivery_sim.system_data.system_data_collector import SystemDataCollector
 from delivery_sim.system_data.system_snapshot_repository import SystemSnapshotRepository
 from delivery_sim.utils.priority_scoring import PriorityScorer
 from delivery_sim.event_collectors.collector_registry import EventCollectorRegistry
-from delivery_sim.utils.curation_policy import StateAdaptiveCurationPolicy
+from delivery_sim.utils.curation_policy import StateAdaptiveCurationPolicy, StateAdaptiveNoPushCurationPolicy
 
 class SimulationRunner:
     """
@@ -220,6 +220,14 @@ class SimulationRunner:
 
         elif self.config.curation_policy == 'state_adaptive':
             curation_policy = StateAdaptiveCurationPolicy(
+                restaurant_repository=self.restaurant_repository,
+                driver_repository=self.driver_repository,
+                order_repository=self.order_repository,
+                config=self.config,
+            )
+
+        elif self.config.curation_policy == 'state_adaptive_no_push':
+            curation_policy = StateAdaptiveNoPushCurationPolicy(
                 restaurant_repository=self.restaurant_repository,
                 driver_repository=self.driver_repository,
                 order_repository=self.order_repository,

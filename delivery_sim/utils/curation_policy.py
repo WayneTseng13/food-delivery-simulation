@@ -256,3 +256,43 @@ class StateAdaptiveCurationPolicy:
                 best_score = r_c
                 best = r
         return best
+    
+class StateAdaptiveNoPushCurationPolicy(StateAdaptiveCurationPolicy):
+    """
+    Ablation (X''): state-adaptive curation with edge-manufacture DISABLED.
+ 
+    X'' is exactly X' minus the pushing branch. It keeps:
+      - single_immediate : idle driver -> argmin(R-D + R-C)   (identical to X')
+      - single_queued    : no driver, no push -> R_nearest     (identical to X')
+    and never manufactures a bundle edge. In the state where X' would push
+    (no idle driver, C-C-compatible anchor exists), X'' instead recommends
+    R_nearest -- i.e. it collapses that state into single_queued.
+ 
+    Purpose: isolate the marginal effect of edge-manufacture. X'' is the
+    tax-free counterfactual -- same R-C signal in the queued state, same
+    R-D+R-C in the immediate state, differing from X' ONLY in whether the
+    system pays tax to manufacture edges. The X' - X'' contrast is therefore
+    a near-clean isolation of the diversion (paired-but-imperfect: the two
+    consume the restaurant-selection/compliance RNG streams differently once
+    their recommendations diverge, so it is not float-aligned).
+ 
+    Implementation: override the edge-manufacture finder to always decline.
+    The inherited select() then structurally cannot enter the edge_manufacture
+    branch (it treats "no push found" as the no-anchor case) and falls through
+    to single_immediate / single_queued. Every other behaviour, label, and the
+    invariant guard are inherited verbatim -- no duplicated branch logic, so the
+    two policies cannot silently drift apart.
+ 
+    Consequence for tax instrumentation: no order is ever labelled
+    'edge_manufacture' under X'', so curation_computed_tax / curation_realized_tax
+    are None on every X'' order and the tax metrics report the n=0 zeros. Tax is
+    an X'-only quantity by construction, which is exactly correct -- X'' has no
+    R* vs R_nearest choice to price.
+    """
+ 
+    def _find_edge_manufacture_restaurant(self, customer_location, restaurants):
+        # Ablation: never manufacture an edge. Returning (None, None) makes the
+        # inherited select() skip the edge_manufacture branch entirely, so the
+        # order is handled by single_immediate (if a driver is idle) or
+        # single_queued (R_nearest) -- never pushed.
+        return None, None

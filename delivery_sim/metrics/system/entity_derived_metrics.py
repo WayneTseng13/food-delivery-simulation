@@ -104,6 +104,57 @@ def calculate_immediate_assignment_rate(analysis_data):
         'immediate_assignment_rate': immediate_assignment_rate
     }
 
+
+def calculate_system_throughput(analysis_data):
+    """
+    Throughput as delivered orders per unit time over the fixed post-warmup window.
+ 
+    Regime behaviour:
+      - Bounded: throughput -> arrival rate. Equal across policies under CRN at a
+        given ratio, so UNINFORMATIVE there; backlog / wait discriminate.
+      - Unbounded: throughput -> server clearing capacity. Discriminates here -- a
+        policy that realizes bundles (one driver clears two orders per trip) raises
+        the clearing rate, which backlog (measuring distance-past-cliff) cannot
+        isolate. Note the benefit is consolidation-mediated, not travel-mediated:
+        edge-manufacture LENGTHENS individual trips (pays tax); throughput rises
+        only if realized bundling outweighs that per-delivery cost.
+ 
+    Contrast system_completion_rate (delivered / arrived): horizon-censored, and
+    with inter-arrival 1.0 and a hard sim end it is strictly < 1.0 even for healthy
+    bounded systems. Keep completion_rate as a DESCRIPTIVE regime flag; do not
+    attribute policy effects on it. Throughput's shared truncation is a CONSTANT
+    offset at fixed (ratio, window), so it differences out cleanly in X' - X''.
+ 
+    Window denominator is analysis_data.analysis_window_length
+    (= simulation_duration - warmup_period), identical across every replication and
+    policy -- exact and comparable, unlike a snapshot-derived span.
+ 
+    Args:
+        analysis_data: AnalysisData with cohort_completed_orders and
+                       analysis_window_length populated.
+ 
+    Returns:
+        dict: system_throughput (orders/min), total_delivered, window_length.
+    """
+    total_delivered = len(analysis_data.cohort_completed_orders)
+    window_length = analysis_data.analysis_window_length
+ 
+    if window_length is None or window_length <= 0:
+        # Window not supplied (older prepare_analysis_data call site) or invalid.
+        # Return 0.0 rather than raising, so the metric degrades gracefully; the
+        # 0.0 will be visible in results as a signal that the window wasn't wired.
+        throughput = 0.0
+        window_length = 0.0
+    else:
+        throughput = total_delivered / window_length
+ 
+    return {
+        'system_throughput': throughput,
+        'total_delivered': total_delivered,
+        'window_length': window_length,
+    }
+
+
 def calculate_all_entity_derived_system_metrics(analysis_data):
     """
     Calculate all entity-derived system metrics for a replication.
@@ -124,6 +175,8 @@ def calculate_all_entity_derived_system_metrics(analysis_data):
     
     # Calculate immediate assignment rate metrics
     immediate_assignment_metrics = calculate_immediate_assignment_rate(analysis_data)
+
+    throughput_metrics = calculate_system_throughput(analysis_data)    # NEW
     
     return {
         # Completion metrics
@@ -137,5 +190,8 @@ def calculate_all_entity_derived_system_metrics(analysis_data):
         
         # Immediate assignment metrics
         'immediate_assignment_rate': immediate_assignment_metrics['immediate_assignment_rate'],
-        'total_immediate_assignments': immediate_assignment_metrics['immediate_assignments']
+        'total_immediate_assignments': immediate_assignment_metrics['immediate_assignments'],
+        
+        #Throughput metrics
+        'system_throughput': throughput_metrics['system_throughput'],        # NEW
     }
