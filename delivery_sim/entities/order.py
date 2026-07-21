@@ -40,6 +40,9 @@ class Order:
         # False:  recommendation produced and customer rejected it
         self.customer_complied = customer_complied                           # NEW
 
+        self.curation_computed_tax = None   # tax offered; set only when edge_manufacture fires
+        self.curation_realized_tax = None   # tax paid; set only when fired AND complied
+        
         # State and relationships
         self.state = OrderState.CREATED
         self.pair = None

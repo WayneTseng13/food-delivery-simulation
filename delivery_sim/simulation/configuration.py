@@ -42,7 +42,7 @@ class OperationalConfig:
                  max_service_duration,             # minutes
 
                  # Curation policy                              # NEW
-                 curation_policy=None,        # None or 'state_adaptive' or 'state_adaptive_no_pair_push'
+                 curation_policy=None,        # None or 'state_adaptive' or 'state_adaptive_no_push'
                  customer_compliance_probability=1.0):
 
         # Arrival process parameters
@@ -64,12 +64,12 @@ class OperationalConfig:
         # Valid values:
         #   None                           — no curation (Policy U)
         #   'state_adaptive'               — Policy X'   (R-D + R-C + active pair-push)
-        #   'state_adaptive_no_pair_push'  — Policy X''  (X' ablation)
+        #   'state_adaptive_no_push'  — Policy X''  (X' ablation)
 
         valid_policies = {
             None,
             'state_adaptive',
-            'state_adaptive_no_pair_push'
+            'state_adaptive_no_push'
         }
         if curation_policy not in valid_policies:
             raise ValueError(
