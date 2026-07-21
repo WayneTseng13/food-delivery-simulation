@@ -372,5 +372,6 @@ class SimulationRunner:
         return {
             'repositories': repositories,
             'system_snapshots': system_snapshots,
-            'event_records': self.event_collector_registry.get_all_records()
+            'event_records': self.event_collector_registry.get_all_records(),
+            'simulation_duration': self.env.now,   # NEW: actual end time, travels with the data
         }

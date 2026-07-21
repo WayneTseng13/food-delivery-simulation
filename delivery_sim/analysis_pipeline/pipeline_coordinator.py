@@ -127,12 +127,14 @@ class ExperimentAnalysisPipeline:
             repositories = raw_replication_result['repositories']
             system_snapshots = raw_replication_result.get('system_snapshots', [])  
             event_records = raw_replication_result.get('event_records', {}) # NEW
-            
+            simulation_duration = raw_replication_result.get('simulation_duration', None)  # NEW
+
             analysis_data = prepare_analysis_data(
                 repositories, 
                 self.warmup_period,
                 system_snapshots,  
-                event_records   # NEW
+                event_records,
+                simulation_duration=simulation_duration,   # NEW
             )
             prepared_analysis_data.append(analysis_data)
             

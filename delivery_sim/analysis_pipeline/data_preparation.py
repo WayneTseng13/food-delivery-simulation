@@ -211,7 +211,7 @@ class AnalysisData:
     calculation functions, providing clean and consistent interfaces.
     """
     
-    def __init__(self, populations):
+    def __init__(self, populations, warmup_period=None, simulation_duration=None):
         """
         Initialize with pre-computed populations.
         
@@ -227,8 +227,20 @@ class AnalysisData:
         self.post_warmup_snapshots = populations.get_post_warmup_snapshots()  # NEW
         self.post_warmup_event_records = populations.get_post_warmup_event_records()
 
+        # Window scalars for rate metrics (e.g. throughput). Kept as plain
+        # attributes so one-level metric functions keep the single-arg
+        # (analysis_data) convention -- no dispatcher change, no config object
+        # leaking into the metrics layer.
+        self.warmup_period = warmup_period
+        self.simulation_duration = simulation_duration
+        self.analysis_window_length = (
+            simulation_duration - warmup_period
+            if (simulation_duration is not None and warmup_period is not None)
+            else None
+        )
 
-def prepare_analysis_data(repositories, warmup_period, system_snapshots=None, event_records=None):
+def prepare_analysis_data(repositories, warmup_period, system_snapshots=None, event_records=None, 
+                          simulation_duration=None):
     """
     Main entry point for creating analysis-ready data populations.
     
@@ -245,7 +257,8 @@ def prepare_analysis_data(repositories, warmup_period, system_snapshots=None, ev
         AnalysisData: Container with all populations ready for metric calculations
     """
     populations = AnalyticalPopulations(repositories, warmup_period, system_snapshots, event_records)
-    return AnalysisData(populations)
+    return AnalysisData(populations, warmup_period=warmup_period,
+                    simulation_duration=simulation_duration)
 
 
 def get_analysis_time_window(simulation_duration, warmup_period):
