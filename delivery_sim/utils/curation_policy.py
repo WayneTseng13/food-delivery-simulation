@@ -98,9 +98,15 @@ class StateAdaptiveCurationPolicy:
                                Must be generated before calling select().
 
         Returns:
-            tuple: (Restaurant, curation_result)
+            tuple: (Restaurant, curation_result, computed_tax)
                    curation_result is one of 'edge_manufacture',
                    'single_immediate', 'single_queued'.
+                   computed_tax is the offered tax d(R*,C) - d(R_nearest,C),
+                   a float only for 'edge_manufacture'; None for the two single
+                   branches, where tax is undefined (no choice against R_nearest
+                   was made). None must NOT be coerced to 0.0 downstream: 0.0 is
+                   a meaningful edge_manufacture value (R* == R_nearest,
+                   self-cancellation), so the two encodings must stay distinct.
         """
         idle_drivers = self.driver_repository.find_available_drivers()
         restaurants = self.restaurant_repository.find_all()
@@ -109,7 +115,8 @@ class StateAdaptiveCurationPolicy:
         # and at least one C-C-compatible pending single. By the greedy invariant
         # this state implies D = 0.
         if self.config.pairing_enabled:
-            r_star = self._find_edge_manufacture_restaurant(customer_location, restaurants)
+            r_star, computed_tax = self._find_edge_manufacture_restaurant(
+                customer_location, restaurants)
             if r_star is not None:
                 # Guard the invariant: anchors present => no idle drivers. If this
                 # fires, the assignment architecture has changed (e.g. mechanism iv
@@ -118,21 +125,25 @@ class StateAdaptiveCurationPolicy:
                     "Greedy invariant violated at curation time: idle drivers and "
                     "C-C-compatible pending anchors coexist (NOT D>0 AND O>0)."
                 )
-                return r_star, 'edge_manufacture'
+                return r_star, 'edge_manufacture', computed_tax
 
         # Branch 2: single_immediate. Idle drivers exist.
+        # Tax is undefined here: the objective is argmin(R-D + R-C), not a choice
+        # against R_nearest. None, not 0.0.
         if idle_drivers:
             selected = self._select_single_immediate(
                 customer_location, restaurants, idle_drivers)
             self.logger.debug(
                 f"StateAdaptive [single_immediate]: restaurant {selected.restaurant_id}")
-            return selected, 'single_immediate'
+            return selected, 'single_immediate', None
 
         # Branch 3: single_queued. No driver, no anchor.
+        # Tax is undefined here: R_nearest is recommended outright, no alternative
+        # was declined. None, not 0.0.
         selected = self._select_single_queued(customer_location, restaurants)
         self.logger.debug(
             f"StateAdaptive [single_queued]: restaurant {selected.restaurant_id}")
-        return selected, 'single_queued'
+        return selected, 'single_queued', None
 
     def _find_edge_manufacture_restaurant(self, customer_location, restaurants):
         """
@@ -156,6 +167,12 @@ class StateAdaptiveCurationPolicy:
         The chosen anchor's identity is deliberately NOT returned: under (iii) the
         dispatcher selects the actual partner later. Curation only establishes
         that a compatible edge exists at R*.
+
+        Returns:
+            tuple: (R*, computed_tax) when an edge can be manufactured, where
+                   computed_tax = d(R*,C) - d(R_nearest_over_all,C) >= 0
+                   (0.0 iff R* == R_nearest, i.e. self-cancellation).
+                   (None, None) when no C-C-compatible anchor exists.
         """
         delta_c = self.config.customers_proximity_threshold
         delta_r = self.config.restaurants_proximity_threshold
@@ -167,7 +184,7 @@ class StateAdaptiveCurationPolicy:
         ]
 
         if not anchors:
-            return None
+            return None, None
 
         # R* over the bundleable set. is_bundleable checks R-R and C-C; C-C is
         # already satisfied for every anchor here, so this resolves to the R-R
@@ -189,11 +206,12 @@ class StateAdaptiveCurationPolicy:
         if best_restaurant is None:
             # Should be unreachable (an anchor's own restaurant always qualifies),
             # but guard defensively rather than return a non-bundleable R.
-            return None
+            return None, None
 
-        # Tax diagnostic (not used for any decision): how far R* sits from the
-        # unconstrained nearest restaurant. tax == 0 means R* == R_nearest and the
-        # branch has coincided with single_queued (self-cancellation).
+        # Tax = R* (min R-C over the bundleable set) minus R_nearest (min R-C over
+        # ALL restaurants, ungated). tax == 0 means R* == R_nearest and the branch
+        # coincided with single_queued (self-cancellation) -- a meaningful zero,
+        # distinct from the None returned by the non-manufacture branches.
         r_nearest_r_c = min(
             calculate_distance(r.location, customer_location) for r in restaurants)
         tax = best_r_c - r_nearest_r_c
@@ -201,7 +219,7 @@ class StateAdaptiveCurationPolicy:
             f"StateAdaptive [edge_manufacture]: restaurant {best_restaurant.restaurant_id} "
             f"(R-C={best_r_c:.3f}km, tax={tax:.3f}km, anchors={len(anchors)})")
 
-        return best_restaurant
+        return best_restaurant, tax
 
     def _select_single_immediate(self, customer_location, restaurants, idle_drivers):
         """

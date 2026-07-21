@@ -76,14 +76,22 @@ class OrderArrivalService:
 
             order_id = self.id_generator.next()
             customer_location = self._generate_customer_location()
-            restaurant_location, curation_result, customer_complied = \
-                self._select_restaurant_location(customer_location)        # CHANGED: 3-tuple
+            restaurant_location, curation_result, customer_complied, computed_tax = \
+                self._select_restaurant_location(customer_location)        # CHANGED: 4-tuple
 
             self.logger.debug(
                 f"[t={self.env.now:.2f}] Generated attributes for order {order_id}: "
                 f"restaurant at {format_location(restaurant_location)}, "
                 f"customer at {format_location(customer_location)}"
             )
+            # realized_tax: the offered tax only counts as "paid" when the
+            # recommendation was an edge_manufacture push AND the customer complied.
+            # None (not 0.0) whenever tax is undefined or the offer was not taken —
+            # a non-complier's origin is a random draw, so R_nearest is not its baseline.
+            if computed_tax is not None and customer_complied:
+                realized_tax = computed_tax
+            else:
+                realized_tax = None
 
             new_order = Order(
                 order_id=order_id,
@@ -91,7 +99,9 @@ class OrderArrivalService:
                 customer_location=customer_location,
                 arrival_time=self.env.now,
                 curation_result=curation_result,
-                customer_complied=customer_complied,                       # NEW
+                customer_complied=customer_complied,
+                curation_computed_tax=computed_tax,      # NEW
+                curation_realized_tax=realized_tax,      # NEW
             )
 
             self.order_repository.add(new_order)
@@ -123,23 +133,26 @@ class OrderArrivalService:
             active curation policy and the customer's compliance behavior.
 
             Returns:
-                tuple: (location, curation_result, customer_complied)
+                tuple: (location, curation_result, customer_complied, computed_tax)
                     curation_result:
-                        None       — no curation policy was active
-                        'fallback' — policy was active but produced no recommendation
-                        'curated' / 'pair_queued' / 'single_immediate' / 'single_queued'
-                                    — policy produced a recommendation
+                        None            — no curation policy was active (U)
+                        'edge_manufacture' / 'single_immediate' / 'single_queued'
+                                        — state_adaptive branch that fired
                     customer_complied:
                         None  — no recommendation to comply with
                         True  — recommendation produced and customer accepted
                         False — recommendation produced and customer rejected
+                    computed_tax:
+                        None  — not an edge_manufacture recommendation (tax undefined)
+                        float — offered tax d(R*,C) - d(R_nearest,C) for edge_manufacture
             """
             # Step 1: ask the curation policy for a recommendation.
             if self.curation_policy is None:
                 recommendation = None
                 curation_result = None
+                computed_tax = None            # NEW: U has no tax concept
             else:
-                recommendation, curation_result = self.curation_policy.select(customer_location)
+                recommendation, curation_result, computed_tax = self.curation_policy.select(customer_location)
 
             # Step 2: customer-behavior decision.
             if recommendation is None:
@@ -192,7 +205,7 @@ class OrderArrivalService:
                         f"curation_result={curation_result})"
                     )
 
-            return selected.location, curation_result, customer_complied
+            return selected.location, curation_result, customer_complied, computed_tax
 
     def _generate_customer_location(self):
         """Generate a customer location for a new order."""
