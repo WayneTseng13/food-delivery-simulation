@@ -12,7 +12,8 @@ class Order:
     """
     
     def __init__(self, order_id, restaurant_location, customer_location,
-                arrival_time, curation_result=None, customer_complied=None):
+                arrival_time, curation_result=None, customer_complied=None,
+                curation_computed_tax=None, curation_realized_tax=None):
         """Initialize a new order with its basic properties."""
         self.logger = get_logger("entities.order")
 
@@ -40,8 +41,8 @@ class Order:
         # False:  recommendation produced and customer rejected it
         self.customer_complied = customer_complied                           # NEW
 
-        self.curation_computed_tax = None   # tax offered; set only when edge_manufacture fires
-        self.curation_realized_tax = None   # tax paid; set only when fired AND complied
+        self.curation_computed_tax = curation_computed_tax   # tax offered; set only when edge_manufacture fires
+        self.curation_realized_tax = curation_realized_tax   # tax paid; set only when fired AND complied
         
         # State and relationships
         self.state = OrderState.CREATED
