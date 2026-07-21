@@ -159,6 +159,10 @@ METRIC_CONFIGURATIONS = {
                 'metric_name': 'immediate_assignment_rate',  # ADD THIS
                 'target_statistic': 'mean',
                 'construct_ci': True
+            },
+            {'metric_name': 'system_throughput', 
+             'target_statistic': 'mean',
+               'construct_ci': True
             }
         ],
         'description': 'Entity-derived system effectiveness metrics'
@@ -202,7 +206,7 @@ METRIC_CONFIGURATIONS = {
                 }
             ],
             'description': 'Queue dynamics metrics in entity units and order units'
-        },
+    },
     
     # ==========================================================================
     # ONE-LEVEL PATTERN: CURATION METRICS
@@ -240,7 +244,21 @@ METRIC_CONFIGURATIONS = {
             },
         ],
         'description': 'Curation operating envelope metrics (Policy X fallback rate; Policy X\' branch activation rates)'
-    }
+    },
+
+    'curation_tax_metrics': {
+        'aggregation_pattern': 'one_level',
+        'metric_module': 'delivery_sim.metrics.system.curation_tax_metrics',
+        'metric_function': 'calculate_all_curation_tax_metrics',
+        'data_key': None,
+        'ci_config': [
+            {'metric_name': 'mean_computed_tax',   'target_statistic': 'mean', 'construct_ci': True},
+            {'metric_name': 'mean_realized_tax',   'target_statistic': 'mean', 'construct_ci': True},
+            {'metric_name': 'diverted_offer_rate', 'target_statistic': 'mean', 'construct_ci': True},
+            {'metric_name': 'realized_offer_rate', 'target_statistic': 'mean', 'construct_ci': True},
+        ],
+        'description': "Curation tax metrics (cost channel for edge_manufacture)"
+    },
 
 }
 
