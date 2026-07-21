@@ -373,7 +373,7 @@ pairing_params = {
 
 
 # Curation policy values
-UNIFORM = None
+STATE_ADAPTIVE_NO_PUSH = 'state_adaptive_no_push'
 STATE_ADAPTIVE = 'state_adaptive'
 
 # Fixed service duration configuration
@@ -391,8 +391,8 @@ for ratio in target_arrival_interval_ratios:
     for pairing_label, pairing_block in [('pairing', pairing_params)]:
                                           
         for curation_label, curation_value in [
-            ('uniform',                     UNIFORM),
-            ('state_adaptive',              STATE_ADAPTIVE),
+            ('state_adaptive_no_push', STATE_ADAPTIVE_NO_PUSH),   # X''
+            ('state_adaptive',         STATE_ADAPTIVE),           # X'
         ]:
             for p in compliance_probabilities:
                 config_name = (
@@ -575,7 +575,7 @@ pipeline = ExperimentAnalysisPipeline(
     warmup_period=uniform_warmup_period,
     enabled_metric_types=['order_metrics', 'system_metrics',
                           'system_state_metrics', 'queue_dynamics_metrics',
-                          'curation_metrics'],
+                          'curation_metrics', 'curation_tax_metrics'], 
     confidence_level=0.95
 )
 
@@ -596,32 +596,43 @@ print(f"✓ Results stored in 'design_analysis_results'")
 
 # %% CELL 16: Extract and Present Key Metrics
 #
-# (iii) operational curation study. Policies: U (no curation) and state_adaptive
-# (X'). Policy X (R-D-only proximity) was removed in the (iii) redesign, so all
-# Policy-X handling ('proximity', 'curated', 'fallback') is gone from this cell.
+# (iii) EDGE-MANUFACTURE EFFECT STUDY. Two arms, both p-swept:
+#   X'' = state_adaptive_no_push  : state-adaptive curation with edge-manufacture
+#                                   DISABLED (tax-free counterfactual). Fires only
+#                                   single_immediate / single_queued; never pushes.
+#   X'  = state_adaptive          : full state-adaptive curation (manufactures edges).
 #
-# NOTE: CELL 8 still builds BOTH no_pairing and pairing cells, so the parser
-# keeps a pairing_condition field and the tables carry a Pairing column. If you
-# later drop the no_pairing arm from CELL 8, these rows simply won't appear.
+# The X' - X'' contrast isolates the marginal effect of edge-manufacture. X'' is
+# the same R-C / R-D curation as X' MINUS the push, so any X'-vs-X'' difference is
+# attributable to edge-manufacture alone (paired-but-imperfect: the two consume the
+# restaurant-selection / compliance RNG streams differently once their
+# recommendations diverge; arrival and driver streams are shared).
 #
-# Branch labels under (iii) state_adaptive:
-#   edge_manufacture  no idle driver, C-C-compatible anchor -> R* (min R-C over
-#                     the bundleable set). Replaces the (ii) 'pair_queued' label.
-#   single_immediate  idle driver exists -> R minimizing R-D + R-C.
-#   single_queued     no idle driver, no anchor -> R_nearest by R-C.
+# U (no curation) is NOT re-run here -- it is p-invariant and already exists in the
+# prior U-vs-X' study at 10 reps. Cross-reference it there for the U -> X'' delta
+# (value of plain curation); do not expect a paired U -> X'' number (different n).
+#
+# Cost channel  : curation_tax_metrics (mean_realized_tax, diverted_offer_rate).
+#                 X' only; X'' has n_edge_manufacture = 0 by construction, so its
+#                 tax cells render as "--" (tax undefined, NOT zero).
+# Benefit channel: system_throughput (regime-robust) + order backlog.
 
 print("\n" + "="*80)
-print("KEY PERFORMANCE METRICS: (iii) OPERATIONAL CURATION STUDY")
+print("KEY PERFORMANCE METRICS: (iii) EDGE-MANUFACTURE EFFECT STUDY")
 print("="*80)
 
 import re
 
 # Design-point names from CELL 8:
 #   f"ratio_{ratio:.1f}_{pairing_label}_{curation_label}_p{p:.1f}"
-# e.g. ratio_7.0_no_pairing_uniform_p0.1
+# e.g. ratio_6.0_pairing_state_adaptive_no_push_p0.1
 #      ratio_12.0_pairing_state_adaptive_p1.0
+#
+# CRITICAL: state_adaptive_no_push MUST precede state_adaptive in the alternation.
+# Otherwise the regex matches 'state_adaptive' greedily, then fails on the dangling
+# '_no_push_p...', silently dropping every X'' row.
 _DESIGN_NAME_RE = re.compile(
-    r'ratio_([\d.]+)_(no_pairing|pairing)_(uniform|state_adaptive)_p([\d.]+)')
+    r'ratio_([\d.]+)_(no_pairing|pairing)_(state_adaptive_no_push|state_adaptive)_p([\d.]+)')
 
 
 def extract_design_point(design_name):
@@ -637,8 +648,8 @@ def extract_design_point(design_name):
 
 
 curation_label_map = {
-    'uniform': 'U',
-    'state_adaptive': "X'",
+    'state_adaptive_no_push': "X''",
+    'state_adaptive':         "X'",
 }
 
 
@@ -666,8 +677,7 @@ for design_name, analysis_result in design_analysis_results.items():
 
     # Order metrics (two-level: nested under mean_of_means)
     mom_estimate, mom_ci_width = _extract('order_metrics', 'assignment_time', 'mean_of_means')
-    pickup_estimate, pickup_ci_width = _extract('order_metrics', 'pickup_distance', 'mean_of_means')
-    delivery_estimate, delivery_ci_width = _extract('order_metrics', 'delivery_distance', 'mean_of_means')
+    delivery_estimate, delivery_ci_width = _extract('order_metrics', 'delivery_travel_time', 'mean_of_means')
     fulfillment_estimate, fulfillment_ci_width = _extract('order_metrics', 'fulfillment_time', 'mean_of_means')
 
     # Queue dynamics (order units -- mechanism-invariant)
@@ -680,13 +690,13 @@ for design_name, analysis_result in design_analysis_results.items():
     driver_util_estimate, driver_util_ci_width = _extract(
         'system_state_metrics', 'driver_utilization', 'mean_of_means')
 
-    # System metrics
+    # System metrics -- pairing rate, throughput (benefit channel)
     pairing_rate_estimate, pairing_rate_ci_width = _extract(
         'system_metrics', 'system_pairing_rate', default=None)
-    immediate_assign_estimate, immediate_assign_ci_width = _extract(
-        'system_metrics', 'immediate_assignment_rate', default=None)
+    throughput_estimate, throughput_ci_width = _extract(
+        'system_metrics', 'system_throughput', default=None)
 
-    # Curation branch activation (edge_manufacture replaces pair_queued)
+    # Curation branch activation
     edge_manuf_estimate, edge_manuf_ci_width = _extract(
         'curation_metrics', 'curation_edge_manufacture_rate', default=None)
     single_imm_estimate, single_imm_ci_width = _extract(
@@ -694,28 +704,42 @@ for design_name, analysis_result in design_analysis_results.items():
     single_q_estimate, single_q_ci_width = _extract(
         'curation_metrics', 'curation_single_queued_rate', default=None)
 
+    # Curation tax (cost channel) -- X' only
+    mean_computed_tax_estimate, mean_computed_tax_ci_width = _extract(
+        'curation_tax_metrics', 'mean_computed_tax', default=None)
+    mean_realized_tax_estimate, mean_realized_tax_ci_width = _extract(
+        'curation_tax_metrics', 'mean_realized_tax', default=None)
+    diverted_offer_estimate, diverted_offer_ci_width = _extract(
+        'curation_tax_metrics', 'diverted_offer_rate', default=None)
+
     metrics_data.append({
         'ratio': ratio,
         'pairing_condition': pairing_condition,
         'curation_policy': curation_policy,
         'p': p,
+        # Order / queue
         'mom_estimate': mom_estimate, 'mom_ci_width': mom_ci_width,
-        'pickup_estimate': pickup_estimate, 'pickup_ci_width': pickup_ci_width,
         'delivery_estimate': delivery_estimate, 'delivery_ci_width': delivery_ci_width,
         'fulfillment_estimate': fulfillment_estimate, 'fulfillment_ci_width': fulfillment_ci_width,
         'growth_rate_estimate': growth_rate_estimate, 'growth_rate_ci_width': growth_rate_ci_width,
         'avg_queue_estimate': avg_queue_estimate, 'avg_queue_ci_width': avg_queue_ci_width,
+        # System state / benefit channel
         'driver_util_estimate': driver_util_estimate, 'driver_util_ci_width': driver_util_ci_width,
         'pairing_rate_estimate': pairing_rate_estimate, 'pairing_rate_ci_width': pairing_rate_ci_width,
-        'immediate_assign_estimate': immediate_assign_estimate, 'immediate_assign_ci_width': immediate_assign_ci_width,
+        'throughput_estimate': throughput_estimate, 'throughput_ci_width': throughput_ci_width,
+        # Branch activation
         'edge_manuf_estimate': edge_manuf_estimate, 'edge_manuf_ci_width': edge_manuf_ci_width,
         'single_imm_estimate': single_imm_estimate, 'single_imm_ci_width': single_imm_ci_width,
         'single_q_estimate': single_q_estimate, 'single_q_ci_width': single_q_ci_width,
+        # Cost channel
+        'mean_computed_tax_estimate': mean_computed_tax_estimate, 'mean_computed_tax_ci_width': mean_computed_tax_ci_width,
+        'mean_realized_tax_estimate': mean_realized_tax_estimate, 'mean_realized_tax_ci_width': mean_realized_tax_ci_width,
+        'diverted_offer_estimate': diverted_offer_estimate, 'diverted_offer_ci_width': diverted_offer_ci_width,
     })
 
-# Sort: ratio, pairing (no_pairing first), policy (U before X'), p ascending.
+# Sort: ratio, pairing (no_pairing first), policy (X'' before X'), p ascending.
 pairing_order = {'no_pairing': 0, 'pairing': 1}
-policy_order = {'uniform': 0, 'state_adaptive': 1}
+policy_order = {'state_adaptive_no_push': 0, 'state_adaptive': 1}
 metrics_data.sort(key=lambda r: (
     r['ratio'], pairing_order[r['pairing_condition']],
     policy_order[r['curation_policy']], r['p']))
@@ -723,8 +747,8 @@ metrics_data.sort(key=lambda r: (
 print(f"\n✓ Parsed {len(metrics_data)} design points")
 if not metrics_data:
     print("  ⚠ metrics_data is EMPTY — no design-point names matched the parser.")
-    print("    Check that design_analysis_results keys look like")
-    print("    'ratio_7.0_pairing_state_adaptive_p1.0'.")
+    print("    Expected keys like 'ratio_6.0_pairing_state_adaptive_no_push_p0.1'.")
+    print("    Most likely cause: the regex alternation order (no_push must be first).")
 
 
 # =============================================================================
@@ -764,12 +788,15 @@ def _make_separator(header_len):
 # =============================================================================
 # TABLE A -- PRIMARY PERFORMANCE METRICS
 # =============================================================================
-header_a = (f"  {'Ratio':>5}  {'Pairing':>10}  {'Curation':>9}  {'p':>4}  "
-            f"{'Assign Time':>15}  {'Fulfillment':>15}  {'Order Backlog':>15}  "
+# Throughput (benefit channel) earns a column: regime-robust where backlog is not.
+# In bounded cells throughput -> arrival rate (equal across arms, uninformative);
+# in unbounded cells it isolates clearing-capacity differences backlog cannot.
+header_a = (f"  {'Ratio':>5}  {'Curation':>9}  {'p':>4}  "
+            f"{'Assign Time':>15}  {'Throughput':>14}  {'Order Backlog':>15}  "
             f"{'Backlog Growth':>17}  {'Driver Util':>15}  {'Pairing Rate':>15}")
 
 print("\nTABLE A -- PRIMARY PERFORMANCE METRICS")
-print("(Order-unit queue series.)")
+print("(Order-unit queue series. X' - X'' at fixed (ratio, p) = edge-manufacture effect.)")
 print("="*len(header_a))
 print(header_a)
 print("="*len(header_a))
@@ -777,10 +804,10 @@ print("="*len(header_a))
 sep_a = _make_separator(len(header_a))
 for row in metrics_data:
     sep_a(row)
-    print(f"  {row['ratio']:>5.1f}  {row['pairing_condition']:>10}  "
+    print(f"  {row['ratio']:>5.1f}  "
           f"{curation_label_map[row['curation_policy']]:>9}  {row['p']:>4.1f}  "
           f"{_fmt(row['mom_estimate'], row['mom_ci_width']):>15}  "
-          f"{_fmt(row['fulfillment_estimate'], row['fulfillment_ci_width']):>15}  "
+          f"{_fmt(row['throughput_estimate'], row['throughput_ci_width'], width=5, decimals=3):>14}  "
           f"{_fmt(row['avg_queue_estimate'], row['avg_queue_ci_width']):>15}  "
           f"{_fmt(row['growth_rate_estimate'], row['growth_rate_ci_width'], width=7, decimals=4):>17}  "
           f"{_fmt(row['driver_util_estimate'], row['driver_util_ci_width'], decimals=4):>15}  "
@@ -789,12 +816,21 @@ print("="*len(header_a))
 
 
 # =============================================================================
-# TABLE B -- CURATION DIAGNOSTIC METRICS (branch activation, X' only)
+# TABLE B -- EDGE-MANUFACTURE DIAGNOSTICS (branch activation + cost channel)
 # =============================================================================
-header_b = (f"  {'Ratio':>5}  {'Pairing':>10}  {'Curation':>9}  {'p':>4}  "
-            f"{'edge_manuf':>16}  {'single_imm':>16}  {'single_q':>16}")
+# Both arms print branch rates. X'' fires only single_immediate / single_queued;
+# its edge_manuf column reads ~0% BY CONSTRUCTION -- a visual confirmation the
+# ablation is doing what it should, not a missing value.
+#
+# Tax columns are X'-only. X'' has no edge_manufacture branch, so tax is UNDEFINED
+# (not zero) and renders as "--". mean_realized_tax is the cost actually paid
+# (fired AND complied); diverted_offer_rate is the fraction of pushes that were a
+# real diversion vs self-cancelled onto R_nearest -- watch it fall toward saturation.
+header_b = (f"  {'Ratio':>5}  {'Curation':>9}  {'p':>4}  "
+            f"{'edge_manuf':>15}  {'single_imm':>15}  {'single_q':>15}  "
+            f"{'realized_tax':>14}  {'diverted_rate':>15}")
 
-print("\nTABLE B -- CURATION DIAGNOSTIC METRICS (branch activation rates, X' only)")
+print("\nTABLE B -- EDGE-MANUFACTURE DIAGNOSTICS (branch activation + cost channel)")
 print("="*len(header_b))
 print(header_b)
 print("="*len(header_b))
@@ -802,16 +838,24 @@ print("="*len(header_b))
 sep_b = _make_separator(len(header_b))
 for row in metrics_data:
     sep_b(row)
-    if row['curation_policy'] == 'uniform':
-        em_str = si_str = sq_str = "N/A"
-    else:
-        em_str = _fmt_rate(row['edge_manuf_estimate'], row['edge_manuf_ci_width'])
-        si_str = _fmt_rate(row['single_imm_estimate'], row['single_imm_ci_width'])
-        sq_str = _fmt_rate(row['single_q_estimate'], row['single_q_ci_width'])
 
-    print(f"  {row['ratio']:>5.1f}  {row['pairing_condition']:>10}  "
+    em_str = _fmt_rate(row['edge_manuf_estimate'], row['edge_manuf_ci_width'])
+    si_str = _fmt_rate(row['single_imm_estimate'], row['single_imm_ci_width'])
+    sq_str = _fmt_rate(row['single_q_estimate'], row['single_q_ci_width'])
+
+    if row['curation_policy'] == 'state_adaptive_no_push':
+        # Tax is undefined for X'' (no edge_manufacture branch). "--", NOT 0.00.
+        tax_str = "--"
+        div_str = "--"
+    else:
+        tax_str = _fmt(row['mean_realized_tax_estimate'], row['mean_realized_tax_ci_width'],
+                       width=5, decimals=3)
+        div_str = _fmt_rate(row['diverted_offer_estimate'], row['diverted_offer_ci_width'])
+
+    print(f"  {row['ratio']:>5.1f}  "
           f"{curation_label_map[row['curation_policy']]:>9}  {row['p']:>4.1f}  "
-          f"{em_str:>16}  {si_str:>16}  {sq_str:>16}")
+          f"{em_str:>15}  {si_str:>15}  {sq_str:>15}  "
+          f"{tax_str:>14}  {div_str:>15}")
 print("="*len(header_b))
 
 
@@ -820,36 +864,56 @@ print("="*len(header_b))
 # =============================================================================
 print("\n📊 METRIC INTERPRETATION GUIDE:")
 print("-"*80)
-print("CURATION POLICY:  U = no curation (baseline),  X' = state-adaptive (iii)")
-print("COMPLIANCE p:     probability the customer accepts the recommendation.")
-print("                  Only meaningful for X'; U produces no recommendation, so")
-print("                  its rows are identical across p (compliance never fires).")
+print("ARMS:  X'' = state-adaptive WITHOUT edge-manufacture (tax-free baseline)")
+print("       X'  = full state-adaptive (manufactures bundle edges)")
+print("       U   = no curation: NOT run here; cross-reference the prior")
+print("             U-vs-X' study (p-invariant, 10 reps) for the U -> X'' delta.")
 print()
-print("BRANCH LABELS (X'):")
-print("  • edge_manufacture: no idle driver, a C-C-compatible pending order")
-print("      exists -> recommend R* (min R-C over the bundleable set),")
-print("      manufacturing a bundle EDGE. Replaces the (ii) 'pair_queued' label.")
-print("  • single_immediate: idle driver exists -> R minimizing R-D + R-C.")
-print("      Expected ~0% in this study's high-ratio band (no idle drivers).")
+print("THE CENTRAL CONTRAST -- X' MINUS X'' at fixed (ratio, p):")
+print("  • On throughput / backlog / assign time  -> edge-manufacture's BENEFIT.")
+print("  • On delivery time / realized_tax        -> edge-manufacture's COST.")
+print("  Benefit is consolidation-mediated (a realized bundle clears two orders")
+print("  per trip); cost is travel-mediated (the tax lengthens the delivery leg).")
+print("  They oppose. Net effect is where the two channels net out.")
+print()
+print("p AS DOSE (within-study null at p=0.1):")
+print("  • At p=0.1, X' and X'' should be near-identical -- edge-manufacture cannot")
+print("    matter if almost nobody complies. If they diverge at p=0.1, suspect the")
+print("    instrumentation, not the mechanism.")
+print("  • Divergence GROWING 0.1 -> 0.5 -> 1.0 is the dose-response that isolates")
+print("    edge-manufacture. Non-monotone / wrong-sign = the no-threshold aggressive")
+print("    push backfiring (tax paid, benefit not realized) -- informative.")
+print()
+print("RATIO SWEEP (6.0 -> 12.0) -- the self-cancellation hypothesis:")
+print("  • diverted_offer_rate and realized_tax should FALL toward 12.0 as the deep")
+print("    pool increasingly puts a compatible order at R_nearest (R* == R_nearest,")
+print("    tax = 0, self-cancellation).")
+print("  • Edge-manufacture BENEFIT (X'-X'') is predicted to peak at MID ratio")
+print("    (~6-8, pool deep enough to manufacture, not so deep it self-harvests)")
+print("    and decay by 12 (organic pairing makes manufacturing redundant).")
+print("  • A null X'-X'' at 12.0 is a RESULT (self-cancellation confirmed), not a")
+print("    failure. X'' is not a no-consolidation baseline -- the dispatcher still")
+print("    bundles organically; X'-X'' isolates MANUFACTURED consolidation on top.")
+print()
+print("REGIME NOTE:")
+print("  • Throughput -> arrival rate in BOUNDED cells (equal across arms; read")
+print("    backlog / assign time there). It discriminates in UNBOUNDED cells")
+print("    (clearing capacity). At 6.0 with pairing ON the system may be bounded,")
+print("    so judge the effect there on backlog, not throughput.")
+print()
+print("BRANCH LABELS (both arms fire the single_* branches; only X' fires edge_manuf):")
+print("  • edge_manufacture: no idle driver, C-C-compatible anchor -> R* (min R-C")
+print("    over the bundleable set). X'' NEVER fires this (~0% expected).")
+print("  • single_immediate: idle driver -> argmin(R-D + R-C). ~0% at high ratio.")
 print("  • single_queued: no idle driver, no anchor -> R_nearest by R-C.")
 print()
-print("HOW TO READ:")
-print("  • U vs X' at fixed (ratio, pairing): does curation improve assignment")
-print("    time / backlog / fulfillment? Compare U against X' across p.")
-print("  • p as dose: within an X' cell, a consistent-sign effect moves")
-print("    monotonically in p. A non-monotone or wrong-sign response is the")
-print("    no-threshold aggressive push backfiring -- expected and informative.")
-print("  • edge_manufacture share vs ratio: toward saturation R* increasingly")
-print("    coincides with R_nearest, so the branch self-cancels -- watch the")
-print("    edge_manufacture share fall and single_queued rise across 7.0 -> 12.0.")
-print()
-print("CAVEAT -- PARTIAL CRN: U and X' consume the restaurant-selection and")
-print("  compliance streams differently, so they are not float-aligned. Arrival")
-print("  and driver streams are shared. Paired-but-imperfect comparison.")
+print("CAVEAT -- PARTIAL CRN: X' and X'' share arrival/driver streams but diverge")
+print("  on restaurant-selection/compliance draws once recommendations differ.")
+print("  Paired-but-imperfect; report X'-X'' as a strong signal, not an identity.")
 print("="*80)
 
 print("\n✓ Metric extraction complete")
-print("✓ Results ready for (iii) operational curation analysis")
+print("✓ Results ready for edge-manufacture effect analysis")
 # %% CELL 17: Ad-hoc Analysis (Placeholder)
 """
 PLACEHOLDER FOR AD-HOC ANALYSIS
