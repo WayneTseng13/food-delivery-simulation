@@ -1,298 +1,250 @@
-# delivery_sim/utils/curation_policy.py
 """
-Curation policy for assignment-time bundling (mechanism iii).
+Curation policies for restaurant recommendation at order-arrival time.
 
-Curation writes one thing at order arrival: the restaurant R recommended to the
-customer. If the customer complies, the order originates at R. Curation cannot
-mutate anything else -- not the driver, not the pending pool, not the dispatch
-decision. Under (iii) the dispatcher chooses the partner and route later, at the
-moment of maximal information, so curation's job is to pre-shape only the
-INVARIANT geometry the dispatcher will then exploit:
+The OrderArrivalService calls a curation policy's select(customer_location) to
+obtain a restaurant recommendation, which the customer then accepts (with
+probability p) or rejects.
 
-  - the order's delivery leg (R-C), fixed the instant the customer complies, and
-    charged to the order through every possible dispatch outcome;
-  - the order's compatibility edges (C-C-gated, R-R-manufacturable), which
-    generate bundle OPTIONS at every subsequent dispatch.
+Policy U (no curation) is NOT a class here. It is represented by
+config.curation_policy is None, handled directly in OrderArrivalService: no
+recommendation is produced and the customer samples a restaurant uniformly.
 
-Anything whose value depends on the identity or position of the driver that
-eventually claims the order is NOT resolvable at arrival and is left to the
-dispatcher. This is why predictive driver-targeting earns no branch: a predicted
-R-D advantage is perishable (pays only if that one driver claims this order at
-that one dispatch) and single-use, whereas a bundleability edge is durable
-(survives across dispatches) and regenerative (self-harvests within a cluster).
+This module was reduced for the featuring/blended-curation chapter. The earlier
+state-adaptive family (X', X'') with the edge-manufacture branch lives on the
+previous git branch; that investigation concluded edge-manufacture adds no
+operational value, so the pure-operational policy survives here only as
+single_immediate + single_queued, which is exactly BlendedCurationPolicy in
+'operational' mode.
 
-State-adaptive branching (three reachable states under the greedy invariant,
-NOT (D>0 AND O>0), which holds at curation time -- the arriving order is not yet
-in the pool):
+The single policy class covers three modes, set explicitly by
+config.curation_policy (NOT inferred from parameter values):
 
-  edge_manufacture  D=0, a C-C-compatible pending single exists.
-                    Recommend R* = argmin over the BUNDLEABLE restaurant set of
-                    R-C. R* is the cheapest-delivery restaurant that also makes
-                    the curated order R-R-compatible with at least one
-                    C-C-compatible anchor -- i.e. the recommendation that
-                    manufactures a bundle edge at the smallest certain tax.
-                    (Contrast R_total = argmin pair route cost, usually the
-                    anchor's own restaurant: that minimizes a CONTINGENT cost
-                    that only materializes if the edge is harvested. We minimize
-                    the certain cost, R-C, instead.)
+    'operational'  X''. Always recommend the operational optimum R_op.
+                   featured_restaurant_id / tau are ignored.
+    'blended'      Blend(tau). Recommend R_F when the operational penalty is
+                   affordable (<= tau), else R_op.
+    'featured'     Policy F. Always recommend R_F. Equivalent to 'blended' with
+                   tau = inf, but named explicitly so a study row reads as F
+                   rather than as a blend with a magic tau.
 
-  single_immediate  D>0 (=> empty pool by the invariant, so no anchors).
-                    Recommend R minimizing R-D + R-C. The arriving order takes
-                    the immediate-assignment path as a solo; this rule aligns
-                    with the dispatcher (for a fresh single, distance score is
-                    monotone in total distance; throughput and fairness are
-                    constant across drivers).
-
-  single_queued     D=0, no C-C-compatible anchor.
-                    Recommend R_nearest = argmin over all restaurants of R-C.
-
-Self-cancellation: when R_nearest already belongs to the bundleable set (common
-at saturation, where the deep pool usually puts a compatible pending order at
-the nearest restaurant), R* = R_nearest and tax = 0 -- edge_manufacture and
-single_queued coincide. The branch does not need to be switched off at high
-load; it self-cancels, which is the mechanism behind the empirically observed
-decay of pair-push value toward saturation.
-
-Scope note: this build is the MAXIMALLY AGGRESSIVE push -- no fire/skip tax
-threshold. Whenever any C-C-compatible anchor exists, it steers to R* and pays
-whatever tax that incurs. This is the clean upper bound on manufacturing
-curation, an ablation extreme rather than a tuned policy; a mid-load backfire
-(positive tax against low realization probability) is an expected and
-informative outcome. The threshold that would buy edges only when cheap is left
-as a documented one-knob extension (config.pair_push_tax_threshold), not built.
-
-Ablation policies (R-D-only, R-C-only, pair-push-only) are intentionally removed
-for now; they will be re-added for signal isolation once this policy is
-validated under (iii).
+'blended' and 'featured' require featured_restaurant_id; a missing one is an
+error, not a silent fallback to operational mode.
 """
 
-from delivery_sim.entities.states import OrderState
 from delivery_sim.utils.location_utils import calculate_distance
-from delivery_sim.utils.bundleability import is_bundleable
 from delivery_sim.utils.logging_system import get_logger
 
 
-class StateAdaptiveCurationPolicy:
+class BlendedCurationPolicy:
     """
-    State-adaptive curation for assignment-time bundling (mechanism iii).
+    Blended business/operational curation over an optional single featured
+    restaurant R_F.
 
-    curation_result labels: 'edge_manufacture', 'single_immediate', 'single_queued'.
-    There is no 'fallback' label -- even the weakest branch (single_queued)
-    applies the R-C signal, which has no analogue in uniform selection.
+    Operational optimum R_op (state-dependent)
+    ------------------------------------------
+        single_immediate (>=1 idle driver):  R_op = argmin (R-D + R-C)
+        single_queued    (no idle driver):   R_op = argmin R-C = R_nearest
+
+    where R-D is distance to the nearest idle driver and R-C is the delivery leg.
+    These two rules are the surviving X'' policy verbatim.
+
+    Featuring penalty (the operational cost of featuring)
+    -----------------------------------------------------
+        c(R) = d(R, nearest idle driver) + d(R, C)   if an idle driver exists
+        c(R) = d(R, C)                               otherwise
+
+        penalty = c(R_F) - c(R_op)   >= 0 by construction (R_op = argmin c)
+
+    Recommend R_F iff penalty <= tau. So tau is the maximum operational travel,
+    in km, the platform will spend to place R_F instead of the operational
+    optimum. penalty is measured in the state-dependent operational currency, NOT
+    as the R-C detour d(R_F,C) - d(R_nearest,C): in the immediate branch R_op is
+    not R_nearest, so the R-C detour can go negative and is unsuitable as a gate.
+
+    Mode
+    ----
+    self.mode in {'operational', 'blended', 'featured'} comes straight from
+    config.curation_policy. Intent is explicit, not inferred from whether a
+    featured id or tau happens to be set. 'operational' ignores featuring
+    entirely; 'featured' is 'blended' with tau fixed at +inf.
+
+    Queue-blindness
+    ---------------
+    Reads only the customer location, the idle-driver set, and the fixed layout.
+    Never consults the pending-order pool. Curation is myopic w.r.t. the queue by
+    construction.
+
+    RNG neutrality
+    --------------
+    select() consumes no random numbers under any mode. It always returns a
+    recommendation, so the caller fires the compliance draw exactly once per
+    arrival and the rejection draw exactly once per rejection -- identical stream
+    consumption across the whole tau sweep. Recommendations diverge across tau,
+    but the compliance coin at a given arrival index does not, so accept/reject
+    outcomes are common across the sweep (arrival-side paired comparison).
+
+    Returns
+    -------
+    tuple: (Restaurant, curation_result, penalty)
+
+        curation_result:
+            'operational_immediate' / 'operational_queued'   R_op recommended
+            'featured_immediate'    / 'featured_queued'       R_F recommended
+        Prefix = fire decision, suffix = branch. Fire rate and branch mix both
+        read off this one field.
+
+        penalty:
+            mode 'operational'  -> None  (no featuring decision was made)
+            mode 'blended'/'featured' -> float, the penalty, recorded whether or
+                                    not featuring fired. On 'operational_*' rows
+                                    (blended, declined) it is the penalty that was
+                                    declined; on 'featured_*' rows it is the
+                                    penalty paid. A single run therefore yields
+                                    the whole penalty distribution over arrivals,
+                                    from which fire_rate(tau') = P(penalty <=
+                                    tau') can be read for every tau'.
     """
 
-    def __init__(self, restaurant_repository, driver_repository,
-                 order_repository, config):
+    _VALID_MODES = {'operational', 'blended', 'featured'}
+
+    def __init__(self, restaurant_repository, driver_repository, config,
+                 featured_restaurant_id=None, tau=None):
         self.logger = get_logger("utils.curation_policy")
         self.restaurant_repository = restaurant_repository
         self.driver_repository = driver_repository
-        self.order_repository = order_repository
         self.config = config
 
-    def select(self, customer_location=None):
-        """
-        Select a restaurant based on current system state.
+        self.mode = config.curation_policy
+        if self.mode not in self._VALID_MODES:
+            raise ValueError(
+                f"BlendedCurationPolicy got curation_policy={self.mode!r}; "
+                f"expected one of {self._VALID_MODES}. "
+                f"(Policy U is curation_policy=None and is not handled by this "
+                f"class.)")
 
-        Args:
-            customer_location: The incoming order's customer location.
-                               Must be generated before calling select().
+        self.featured_restaurant_id = featured_restaurant_id
 
-        Returns:
-            tuple: (Restaurant, curation_result, computed_tax)
-                   curation_result is one of 'edge_manufacture',
-                   'single_immediate', 'single_queued'.
-                   computed_tax is the offered tax d(R*,C) - d(R_nearest,C),
-                   a float only for 'edge_manufacture'; None for the two single
-                   branches, where tax is undefined (no choice against R_nearest
-                   was made). None must NOT be coerced to 0.0 downstream: 0.0 is
-                   a meaningful edge_manufacture value (R* == R_nearest,
-                   self-cancellation), so the two encodings must stay distinct.
+        if self.mode == 'operational':
+            # Featuring is inert. Do not require an id or tau; ignore both.
+            self.tau = None
+        else:
+            # 'blended' or 'featured' -- a featured restaurant is mandatory.
+            if featured_restaurant_id is None:
+                raise ValueError(
+                    f"curation_policy={self.mode!r} requires a "
+                    f"featured_restaurant_id, but none was given. Featuring "
+                    f"nothing is incoherent; use 'operational' for pure X''.")
+            if self.mode == 'featured':
+                # Policy F: always feature. tau is fixed at +inf regardless of
+                # any value passed (a finite tau here would be a blend, not F).
+                self.tau = float('inf')
+            else:  # 'blended'
+                if tau is None or tau < 0.0:
+                    raise ValueError(
+                        f"curation_policy='blended' requires a non-negative tau "
+                        f"(or inf); got {tau!r}.")
+                self.tau = float(tau)
+
+        self._featured = None  # resolved lazily on first select()
+
+    # ----- operational optimum (surviving X'') -----
+
+    def _select_operational(self, customer_location, idle_drivers):
         """
-        idle_drivers = self.driver_repository.find_available_drivers()
+        R_op = the pure-operational recommendation, and the branch it came from.
+
+        single_immediate: argmin (R-D + R-C) over all restaurants.
+        single_queued:    argmin R-C over all restaurants (R_nearest).
+
+        Both are the argmin of _cost_of under the current information set, so
+        _cost_of(R_op) is the minimum cost and penalty >= 0 for any R_F.
+
+        Returns (R_op, branch) where branch is 'immediate' or 'queued'.
+        """
         restaurants = self.restaurant_repository.find_all()
+        best = None
+        best_cost = float('inf')
+        for r in restaurants:
+            cost = self._cost_of(r, customer_location, idle_drivers)
+            if cost < best_cost:
+                best_cost = cost
+                best = r
+        branch = 'immediate' if idle_drivers else 'queued'
+        return best, branch
 
-        # Branch 1: edge_manufacture. Requires pairing enabled (structural gate)
-        # and at least one C-C-compatible pending single. By the greedy invariant
-        # this state implies D = 0.
-        if self.config.pairing_enabled:
-            r_star, computed_tax = self._find_edge_manufacture_restaurant(
-                customer_location, restaurants)
-            if r_star is not None:
-                # Guard the invariant: anchors present => no idle drivers. If this
-                # fires, the assignment architecture has changed (e.g. mechanism iv
-                # batching) and this branch's assumptions need revisiting.
-                assert not idle_drivers, (
-                    "Greedy invariant violated at curation time: idle drivers and "
-                    "C-C-compatible pending anchors coexist (NOT D>0 AND O>0)."
-                )
-                return r_star, 'edge_manufacture', computed_tax
-
-        # Branch 2: single_immediate. Idle drivers exist.
-        # Tax is undefined here: the objective is argmin(R-D + R-C), not a choice
-        # against R_nearest. None, not 0.0.
+    def _cost_of(self, restaurant, customer_location, idle_drivers):
+        """
+        Expected knowable operational travel to serve this arrival from
+        `restaurant`, under current information. Its argmin over all restaurants
+        is exactly R_op, so penalty = c(R_F) - c(R_op) >= 0.
+        """
+        r_c = calculate_distance(restaurant.location, customer_location)
         if idle_drivers:
-            selected = self._select_single_immediate(
-                customer_location, restaurants, idle_drivers)
-            self.logger.debug(
-                f"StateAdaptive [single_immediate]: restaurant {selected.restaurant_id}")
-            return selected, 'single_immediate', None
-
-        # Branch 3: single_queued. No driver, no anchor.
-        # Tax is undefined here: R_nearest is recommended outright, no alternative
-        # was declined. None, not 0.0.
-        selected = self._select_single_queued(customer_location, restaurants)
-        self.logger.debug(
-            f"StateAdaptive [single_queued]: restaurant {selected.restaurant_id}")
-        return selected, 'single_queued', None
-
-    def _find_edge_manufacture_restaurant(self, customer_location, restaurants):
-        """
-        Return R*, the recommendation that manufactures a bundle edge at the
-        smallest certain tax, or None if no edge can be manufactured.
-
-        Steps:
-          1. C-C gate. Anchors = pending CREATED singles whose customer is within
-             delta_c of the arriving customer. Read from the SAME pending set the
-             dispatcher enumerates (OrderState.CREATED), so curation's anchor set
-             matches the dispatcher's solo-option set exactly.
-          2. If no anchors, return None (no edge to manufacture).
-          3. Bundleable restaurant set. A restaurant R qualifies if placing the
-             curated order at R would make it R-R-compatible with at least one
-             C-C anchor -- i.e. is_bundleable(curated-at-R, anchor). Each anchor's
-             own restaurant always qualifies (R-R = 0), so the set is non-empty
-             whenever anchors exist.
-          4. R* = argmin over the bundleable set of R-C. This minimizes the
-             certain delivery-leg cost, hence the tax against R_nearest.
-
-        The chosen anchor's identity is deliberately NOT returned: under (iii) the
-        dispatcher selects the actual partner later. Curation only establishes
-        that a compatible edge exists at R*.
-
-        Returns:
-            tuple: (R*, computed_tax) when an edge can be manufactured, where
-                   computed_tax = d(R*,C) - d(R_nearest_over_all,C) >= 0
-                   (0.0 iff R* == R_nearest, i.e. self-cancellation).
-                   (None, None) when no C-C-compatible anchor exists.
-        """
-        delta_c = self.config.customers_proximity_threshold
-        delta_r = self.config.restaurants_proximity_threshold
-
-        pending = self.order_repository.find_by_state(OrderState.CREATED)
-        anchors = [
-            o for o in pending
-            if calculate_distance(customer_location, o.customer_location) <= delta_c
-        ]
-
-        if not anchors:
-            return None, None
-
-        # R* over the bundleable set. is_bundleable checks R-R and C-C; C-C is
-        # already satisfied for every anchor here, so this resolves to the R-R
-        # feasibility of placing the curated order at candidate restaurant r.
-        best_restaurant = None
-        best_r_c = float('inf')
-        for r in restaurants:
-            compatible = any(
-                calculate_distance(r.location, a.restaurant_location) <= delta_r
-                for a in anchors
+            r_d = min(
+                calculate_distance(restaurant.location, d.location)
+                for d in idle_drivers
             )
-            if not compatible:
-                continue
-            r_c = calculate_distance(r.location, customer_location)
-            if r_c < best_r_c:
-                best_r_c = r_c
-                best_restaurant = r
+            return r_d + r_c
+        return r_c
 
-        if best_restaurant is None:
-            # Should be unreachable (an anchor's own restaurant always qualifies),
-            # but guard defensively rather than return a non-bundleable R.
-            return None, None
+    # ----- featured restaurant resolution -----
 
-        # Tax = R* (min R-C over the bundleable set) minus R_nearest (min R-C over
-        # ALL restaurants, ungated). tax == 0 means R* == R_nearest and the branch
-        # coincided with single_queued (self-cancellation) -- a meaningful zero,
-        # distinct from the None returned by the non-manufacture branches.
-        r_nearest_r_c = min(
-            calculate_distance(r.location, customer_location) for r in restaurants)
-        tax = best_r_c - r_nearest_r_c
+    def _get_featured(self):
+        if self._featured is None:
+            for r in self.restaurant_repository.find_all():
+                if r.restaurant_id == self.featured_restaurant_id:
+                    self._featured = r
+                    break
+            if self._featured is None:
+                known = [r.restaurant_id
+                         for r in self.restaurant_repository.find_all()]
+                raise ValueError(
+                    f"featured_restaurant_id {self.featured_restaurant_id!r} not "
+                    f"found. Known restaurant ids: {known}")
+        return self._featured
+
+    # ----- main entry point -----
+
+    def select(self, customer_location=None):
+        idle_drivers = self.driver_repository.find_available_drivers()
+        r_op, branch = self._select_operational(customer_location, idle_drivers)
+
+        # Pure operational mode (X''): no featuring, no penalty.
+        if self.mode == 'operational':
+            self.logger.debug(
+                f"Blended[operational] operational_{branch}: "
+                f"restaurant {r_op.restaurant_id}")
+            return r_op, 'operational_' + branch, None
+
+        # Featuring modes ('blended' / 'featured').
+        r_f = self._get_featured()
+
+        # Identity short-circuit: featuring is free when R_F already is R_op.
+        # Comparing ids (not costs) guarantees an exact 0.0 penalty and keeps the
+        # tau=0 == X'' identity immune to float noise in two summed cost paths.
+        if r_f.restaurant_id == r_op.restaurant_id:
+            penalty = 0.0
+        else:
+            penalty = (self._cost_of(r_f, customer_location, idle_drivers)
+                       - self._cost_of(r_op, customer_location, idle_drivers))
+            if penalty < 0.0:
+                # r_op is the argmin of the same cost function; a genuine negative
+                # is impossible. Only float underflow in the immediate branch
+                # (two separately-summed sqrt paths) can produce a tiny negative.
+                # Clamp it -- a -1e-16 penalty flipping the tau=0 fire decision is
+                # exactly what would break the bit-identical-to-X'' check.
+                assert penalty > -1e-9, (
+                    f"Negative featuring penalty {penalty!r} in branch "
+                    f"{branch!r}: _cost_of disagrees with the operational argmin.")
+                penalty = 0.0
+
+        if penalty <= self.tau:
+            self.logger.debug(
+                f"Blended featured_{branch}: restaurant {r_f.restaurant_id} "
+                f"(penalty={penalty:.3f} <= tau={self.tau})")
+            return r_f, 'featured_' + branch, penalty
+
         self.logger.debug(
-            f"StateAdaptive [edge_manufacture]: restaurant {best_restaurant.restaurant_id} "
-            f"(R-C={best_r_c:.3f}km, tax={tax:.3f}km, anchors={len(anchors)})")
-
-        return best_restaurant, tax
-
-    def _select_single_immediate(self, customer_location, restaurants, idle_drivers):
-        """
-        Select R minimizing R-D + R-C in the single_immediate state.
-
-        R-D is the distance from R to the nearest idle driver; R-C is the
-        delivery leg. Their sum is the full travel distance of the immediate solo
-        delivery, which is what the dispatcher's distance score minimizes for a
-        fresh single. Curation and dispatcher therefore agree on the winner.
-        """
-        best = None
-        best_score = float('inf')
-        for r in restaurants:
-            r_c = calculate_distance(r.location, customer_location)
-            r_d = min(calculate_distance(r.location, d.location) for d in idle_drivers)
-            if r_d + r_c < best_score:
-                best_score = r_d + r_c
-                best = r
-        return best
-
-    def _select_single_queued(self, customer_location, restaurants):
-        """
-        Select R_nearest minimizing R-C in the single_queued state.
-
-        No idle drivers means R-D is uninformative. R-C is the only available
-        signal: a shorter restaurant-to-customer leg benefits delivery time
-        regardless of which driver eventually claims the order.
-        """
-        best = None
-        best_score = float('inf')
-        for r in restaurants:
-            r_c = calculate_distance(r.location, customer_location)
-            if r_c < best_score:
-                best_score = r_c
-                best = r
-        return best
-    
-class StateAdaptiveNoPushCurationPolicy(StateAdaptiveCurationPolicy):
-    """
-    Ablation (X''): state-adaptive curation with edge-manufacture DISABLED.
- 
-    X'' is exactly X' minus the pushing branch. It keeps:
-      - single_immediate : idle driver -> argmin(R-D + R-C)   (identical to X')
-      - single_queued    : no driver, no push -> R_nearest     (identical to X')
-    and never manufactures a bundle edge. In the state where X' would push
-    (no idle driver, C-C-compatible anchor exists), X'' instead recommends
-    R_nearest -- i.e. it collapses that state into single_queued.
- 
-    Purpose: isolate the marginal effect of edge-manufacture. X'' is the
-    tax-free counterfactual -- same R-C signal in the queued state, same
-    R-D+R-C in the immediate state, differing from X' ONLY in whether the
-    system pays tax to manufacture edges. The X' - X'' contrast is therefore
-    a near-clean isolation of the diversion (paired-but-imperfect: the two
-    consume the restaurant-selection/compliance RNG streams differently once
-    their recommendations diverge, so it is not float-aligned).
- 
-    Implementation: override the edge-manufacture finder to always decline.
-    The inherited select() then structurally cannot enter the edge_manufacture
-    branch (it treats "no push found" as the no-anchor case) and falls through
-    to single_immediate / single_queued. Every other behaviour, label, and the
-    invariant guard are inherited verbatim -- no duplicated branch logic, so the
-    two policies cannot silently drift apart.
- 
-    Consequence for tax instrumentation: no order is ever labelled
-    'edge_manufacture' under X'', so curation_computed_tax / curation_realized_tax
-    are None on every X'' order and the tax metrics report the n=0 zeros. Tax is
-    an X'-only quantity by construction, which is exactly correct -- X'' has no
-    R* vs R_nearest choice to price.
-    """
- 
-    def _find_edge_manufacture_restaurant(self, customer_location, restaurants):
-        # Ablation: never manufacture an edge. Returning (None, None) makes the
-        # inherited select() skip the edge_manufacture branch entirely, so the
-        # order is handled by single_immediate (if a driver is idle) or
-        # single_queued (R_nearest) -- never pushed.
-        return None, None
+            f"Blended operational_{branch}: restaurant {r_op.restaurant_id} "
+            f"(declined; penalty={penalty:.3f} > tau={self.tau})")
+        return r_op, 'operational_' + branch, penalty

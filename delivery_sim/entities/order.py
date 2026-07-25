@@ -13,7 +13,7 @@ class Order:
     
     def __init__(self, order_id, restaurant_location, customer_location,
                 arrival_time, curation_result=None, customer_complied=None,
-                curation_computed_tax=None, curation_realized_tax=None):
+                featuring_penalty=None):
         """Initialize a new order with its basic properties."""
         self.logger = get_logger("entities.order")
 
@@ -25,13 +25,12 @@ class Order:
         self.arrival_time = arrival_time
 
         # Curation metadata — records the platform's recommendation state.
-        # None:                no curation policy was active
-        # 'fallback':          policy was active but produced no recommendation
-        #                      (Policy X with no idle drivers)
-        # 'curated':           Policy X selected via R-D proximity
-        # 'pair_queued',
-        # 'single_immediate',
-        # 'single_queued':     Policy X' branch labels
+        #    curation_result:
+        #        None                          -- Policy U (no curation)
+        #        'operational_immediate' /
+        #        'operational_queued'          -- R_op recommended
+        #        'featured_immediate' /
+        #        'featured_queued'             -- R_F recommended
         self.curation_result = curation_result
 
         # Customer compliance metadata — records the customer's response to the
@@ -41,8 +40,11 @@ class Order:
         # False:  recommendation produced and customer rejected it
         self.customer_complied = customer_complied                           # NEW
 
-        self.curation_computed_tax = curation_computed_tax   # tax offered; set only when edge_manufacture fires
-        self.curation_realized_tax = curation_realized_tax   # tax paid; set only when fired AND complied
+        # Operational cost of the featuring decision for this order, in km.
+        # None under Policy U and under 'operational' mode (no featuring decision).
+        # Under 'blended'/'featured' it is c(R_F) - c(R_op) >= 0, recorded whether
+        # or not featuring fired -- so the per-order distribution calibrates tau.
+        self.featuring_penalty = featuring_penalty
         
         # State and relationships
         self.state = OrderState.CREATED

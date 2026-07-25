@@ -76,22 +76,14 @@ class OrderArrivalService:
 
             order_id = self.id_generator.next()
             customer_location = self._generate_customer_location()
-            restaurant_location, curation_result, customer_complied, computed_tax = \
-                self._select_restaurant_location(customer_location)        # CHANGED: 4-tuple
+            restaurant_location, curation_result, customer_complied, featuring_penalty = \
+                self._select_restaurant_location(customer_location)
 
             self.logger.debug(
                 f"[t={self.env.now:.2f}] Generated attributes for order {order_id}: "
                 f"restaurant at {format_location(restaurant_location)}, "
                 f"customer at {format_location(customer_location)}"
             )
-            # realized_tax: the offered tax only counts as "paid" when the
-            # recommendation was an edge_manufacture push AND the customer complied.
-            # None (not 0.0) whenever tax is undefined or the offer was not taken —
-            # a non-complier's origin is a random draw, so R_nearest is not its baseline.
-            if computed_tax is not None and customer_complied:
-                realized_tax = computed_tax
-            else:
-                realized_tax = None
 
             new_order = Order(
                 order_id=order_id,
@@ -100,8 +92,7 @@ class OrderArrivalService:
                 arrival_time=self.env.now,
                 curation_result=curation_result,
                 customer_complied=customer_complied,
-                curation_computed_tax=computed_tax,      # NEW
-                curation_realized_tax=realized_tax,      # NEW
+                featuring_penalty=featuring_penalty,      # renamed; single field
             )
 
             self.order_repository.add(new_order)
@@ -128,84 +119,75 @@ class OrderArrivalService:
         return self.arrival_stream.exponential(self.config.mean_order_inter_arrival_time)
 
     def _select_restaurant_location(self, customer_location):
-            """
-            Determine the restaurant a customer ends up ordering from, given the
-            active curation policy and the customer's compliance behavior.
-
-            Returns:
-                tuple: (location, curation_result, customer_complied, computed_tax)
-                    curation_result:
-                        None            — no curation policy was active (U)
-                        'edge_manufacture' / 'single_immediate' / 'single_queued'
-                                        — state_adaptive branch that fired
-                    customer_complied:
-                        None  — no recommendation to comply with
-                        True  — recommendation produced and customer accepted
-                        False — recommendation produced and customer rejected
-                    computed_tax:
-                        None  — not an edge_manufacture recommendation (tax undefined)
-                        float — offered tax d(R*,C) - d(R_nearest,C) for edge_manufacture
-            """
-            # Step 1: ask the curation policy for a recommendation.
-            if self.curation_policy is None:
-                recommendation = None
-                curation_result = None
-                computed_tax = None            # NEW: U has no tax concept
-            else:
-                recommendation, curation_result, computed_tax = self.curation_policy.select(customer_location)
-
-            # Step 2: customer-behavior decision.
-            if recommendation is None:
-                # No recommendation produced. Customer samples uniformly over all
-                # restaurants using restaurant_selection_stream (matches prior behavior
-                # for both U and X-in-fallback).
-                restaurants = self.restaurant_repository.find_all()
-                selected = self.restaurant_selection_stream.choice(restaurants)
-                customer_complied = None
-                self.logger.debug(
-                    f"[t={self.env.now:.2f}] No recommendation; "
-                    f"customer chose restaurant {selected.restaurant_id} uniformly "
-                    f"(curation_result={curation_result})"
-                )
-                return selected.location, curation_result, customer_complied
-
-            # Recommendation produced. Apply compliance gate.
-            u = self.compliance_stream.uniform(0.0, 1.0)
-            if u < self.compliance_probability:
-                selected = recommendation
-                customer_complied = True
-                self.logger.debug(
-                    f"[t={self.env.now:.2f}] Recommendation accepted; "
-                    f"customer chose restaurant {selected.restaurant_id} "
-                    f"(curation_result={curation_result})"
-                )
-            else:
-                # Customer rejects the recommendation and samples uniformly from the
-                # remaining restaurants (excluding the recommended one).
-                restaurants = self.restaurant_repository.find_all()
-                others = [r for r in restaurants if r.restaurant_id != recommendation.restaurant_id]
-                if not others:
-                    # Pathological single-restaurant case: there is no alternative,
-                    # so the customer is forced to comply.
-                    selected = recommendation
-                    customer_complied = True
-                    self.logger.debug(
-                        f"[t={self.env.now:.2f}] Recommendation rejected but no other "
-                        f"restaurants exist; customer forced to accept "
-                        f"restaurant {selected.restaurant_id}"
-                    )
-                else:
-                    selected = self.compliance_stream.choice(others)
-                    customer_complied = False
-                    self.logger.debug(
-                        f"[t={self.env.now:.2f}] Recommendation rejected; "
-                        f"customer chose restaurant {selected.restaurant_id} "
-                        f"uniformly from remaining {len(others)} "
-                        f"(recommendation was {recommendation.restaurant_id}, "
-                        f"curation_result={curation_result})"
-                    )
-
-            return selected.location, curation_result, customer_complied, computed_tax
+        """
+        Determine the restaurant a customer ends up ordering from, given the active
+        curation policy and the customer's compliance behavior.
+    
+        Flow:
+        - Policy U (curation_policy is None): no recommendation. The customer
+            samples uniformly over ALL restaurants on restaurant_selection_stream.
+            compliance is not applicable (None).
+        - Any curation policy: a recommendation is ALWAYS produced. Apply the
+            compliance gate on compliance_stream. On acceptance the customer takes
+            the recommendation; on rejection the customer samples uniformly over the
+            remaining restaurants on restaurant_selection_stream.
+    
+        Returns:
+            tuple: (location, curation_result, customer_complied, featuring_penalty)
+                curation_result:
+                    None                          -- Policy U (no curation)
+                    'operational_immediate' /
+                    'operational_queued'          -- R_op recommended
+                    'featured_immediate' /
+                    'featured_queued'             -- R_F recommended
+                customer_complied:
+                    None   -- no recommendation (U)
+                    True   -- recommendation accepted
+                    False  -- recommendation rejected
+                featuring_penalty:
+                    None   -- U, or operational mode (no featuring decision)
+                    float  -- featuring penalty (>= 0), whether or not it fired
+        """
+        # Policy U: no recommendation, no compliance concept.
+        if self.curation_policy is None:
+            restaurants = self.restaurant_repository.find_all()
+            selected = self.restaurant_selection_stream.choice(restaurants)
+            self.logger.debug(
+                f"[t={self.env.now:.2f}] No curation (U); customer chose "
+                f"restaurant {selected.restaurant_id} uniformly")
+            return selected.location, None, None, None
+    
+        # A curation policy is active: it ALWAYS produces a recommendation.
+        recommendation, curation_result, featuring_penalty = \
+            self.curation_policy.select(customer_location)
+    
+        assert recommendation is not None, (
+            f"{type(self.curation_policy).__name__} returned no recommendation. "
+            f"Every curation policy in this module must always recommend; the "
+            f"no-recommendation path belongs to Policy U (curation_policy is None).")
+    
+        # Compliance gate.
+        u = self.compliance_stream.uniform(0.0, 1.0)
+        if u < self.compliance_probability:
+            self.logger.debug(
+                f"[t={self.env.now:.2f}] Recommendation accepted; "
+                f"restaurant {recommendation.restaurant_id} "
+                f"(curation_result={curation_result})")
+            return recommendation.location, curation_result, True, featuring_penalty
+    
+        # Rejection: sample uniformly from the other restaurants. With N=10 the
+        # single-restaurant pathological case cannot occur, so no forced-comply guard.
+        restaurants = self.restaurant_repository.find_all()
+        others = [r for r in restaurants
+                if r.restaurant_id != recommendation.restaurant_id]
+        selected = self.restaurant_selection_stream.choice(others)
+        self.logger.debug(
+            f"[t={self.env.now:.2f}] Recommendation rejected; customer chose "
+            f"restaurant {selected.restaurant_id} uniformly from {len(others)} "
+            f"(recommendation was {recommendation.restaurant_id}, "
+            f"curation_result={curation_result})")
+        return selected.location, curation_result, False, featuring_penalty
+ 
 
     def _generate_customer_location(self):
         """Generate a customer location for a new order."""
