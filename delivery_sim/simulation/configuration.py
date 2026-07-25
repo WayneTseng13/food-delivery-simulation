@@ -41,8 +41,10 @@ class OperationalConfig:
                  min_service_duration,             # minutes
                  max_service_duration,             # minutes
 
-                 # Curation policy                              # NEW
-                 curation_policy=None,        # None or 'state_adaptive' or 'state_adaptive_no_push'
+                 # Curation policy
+                 curation_policy=None,        # None | 'operational' | 'blended' | 'featured'
+                 featured_restaurant_id=None, # required for 'blended'/'featured'
+                 featured_tau=None,           # required for 'blended' (km, >=0); ignored otherwise
                  customer_compliance_probability=1.0):
 
         # Arrival process parameters
@@ -60,23 +62,42 @@ class OperationalConfig:
         self.min_service_duration = min_service_duration
         self.max_service_duration = max_service_duration
 
-        # Curation policy
+        # Curation policy.
         # Valid values:
-        #   None                           — no curation (Policy U)
-        #   'state_adaptive'               — Policy X'   (R-D + R-C + active pair-push)
-        #   'state_adaptive_no_push'  — Policy X''  (X' ablation)
-
-        valid_policies = {
-            None,
-            'state_adaptive',
-            'state_adaptive_no_push'
-        }
+        #   None            — no curation (Policy U); customer samples uniformly
+        #   'operational'   — Policy X'' (single_immediate + single_queued)
+        #   'blended'       — Blend(tau) over one featured restaurant
+        #   'featured'      — Policy F (always feature; tau = +inf)
+        valid_policies = {None, 'operational', 'blended', 'featured'}
         if curation_policy not in valid_policies:
             raise ValueError(
                 f"Invalid curation_policy: {curation_policy!r}. "
                 f"Must be one of {valid_policies}."
             )
         self.curation_policy = curation_policy
+        self.featured_restaurant_id = featured_restaurant_id
+        self.featured_tau = featured_tau
+
+        # Featuring modes require a featured restaurant; 'blended' also needs tau.
+        # (The policy class re-validates, but failing here gives a clearer error
+        # at config-construction time, before a run starts.)
+        if curation_policy in ('blended', 'featured') and featured_restaurant_id is None:
+            raise ValueError(
+                f"curation_policy={curation_policy!r} requires featured_restaurant_id."
+            )
+        if curation_policy == 'blended' and (featured_tau is None or featured_tau < 0.0):
+            raise ValueError(
+                f"curation_policy='blended' requires featured_tau >= 0.0 "
+                f"(or inf); got {featured_tau!r}."
+            )
+        if curation_policy in (None, 'operational') and featured_restaurant_id is not None:
+            # Not fatal, but almost certainly a study-script mistake — a featured
+            # id set on a non-featuring row silently does nothing.
+            import warnings
+            warnings.warn(
+                f"featured_restaurant_id={featured_restaurant_id!r} is set but "
+                f"curation_policy={curation_policy!r} does not feature; it will be "
+                f"ignored.", stacklevel=2)
 
         # Customer compliance probability
         # Probability that a customer accepts the platform's restaurant recommendation
@@ -99,6 +120,8 @@ class OperationalConfig:
                 f"customers_threshold={self.customers_proximity_threshold}km, "
                 f"service_duration={self.mean_service_duration}±{self.service_duration_std_dev}min, "
                 f"curation={self.curation_policy}, "
+                f"featured={self.featured_restaurant_id}, "
+                f"tau={self.featured_tau}, "
                 f"compliance_p={self.customer_compliance_probability})")
 
 class ExperimentConfig:

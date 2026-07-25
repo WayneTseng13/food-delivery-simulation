@@ -32,7 +32,7 @@ from delivery_sim.system_data.system_data_collector import SystemDataCollector
 from delivery_sim.system_data.system_snapshot_repository import SystemSnapshotRepository
 from delivery_sim.utils.priority_scoring import PriorityScorer
 from delivery_sim.event_collectors.collector_registry import EventCollectorRegistry
-from delivery_sim.utils.curation_policy import StateAdaptiveCurationPolicy, StateAdaptiveNoPushCurationPolicy
+from delivery_sim.utils.curation_policy import BlendedCurationPolicy
 
 class SimulationRunner:
     """
@@ -214,26 +214,21 @@ class SimulationRunner:
 
         # Create curation policy based on operational config.
         # None means no curation — order_arrival_service handles uniform
-        # restaurant sampling itself.
+        # restaurant sampling itself. The three non-None modes all map to the
+        # single BlendedCurationPolicy, which reads config.curation_policy as its
+        # mode ('operational' | 'blended' | 'featured').
         if self.config.curation_policy is None:
             curation_policy = None
 
-        elif self.config.curation_policy == 'state_adaptive':
-            curation_policy = StateAdaptiveCurationPolicy(
+        elif self.config.curation_policy in ('operational', 'blended', 'featured'):
+            curation_policy = BlendedCurationPolicy(
                 restaurant_repository=self.restaurant_repository,
                 driver_repository=self.driver_repository,
-                order_repository=self.order_repository,
                 config=self.config,
+                featured_restaurant_id=self.config.featured_restaurant_id,
+                tau=self.config.featured_tau,
             )
 
-        elif self.config.curation_policy == 'state_adaptive_no_push':
-            curation_policy = StateAdaptiveNoPushCurationPolicy(
-                restaurant_repository=self.restaurant_repository,
-                driver_repository=self.driver_repository,
-                order_repository=self.order_repository,
-                config=self.config,
-            )
-            
         else:
             raise ValueError(
                 f"Unknown curation_policy: {self.config.curation_policy!r}"
