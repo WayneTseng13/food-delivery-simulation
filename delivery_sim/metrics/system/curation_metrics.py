@@ -48,8 +48,7 @@ are excluded from featured_recommendation_rate's numerator by construction and
 contribute 0 to featured_origin_rate unless U is run with a featured id set
 (which it is not).
 
-The featured restaurant id is read from config.featured_restaurant_id via
-analysis_data. If it is None (U / operational mode), featured_origin_rate is not
+The featured restaurant id. If it is None (U / operational mode), featured_origin_rate is not
 meaningful and is reported as 0.0.
 """
 
@@ -74,8 +73,7 @@ def calculate_all_curation_metrics(analysis_data):
     Entry point called by the analysis pipeline (one_level pattern).
 
     Args:
-        analysis_data: AnalysisData with cohort_orders (and, ideally, config
-                       carrying featured_restaurant_id).
+        analysis_data: AnalysisData with cohort_orders
 
     Returns:
         dict:
