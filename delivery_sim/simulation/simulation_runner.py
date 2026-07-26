@@ -363,10 +363,21 @@ class SimulationRunner:
         
         self.logger.debug(f"Collected {len(system_snapshots)} system snapshots for warmup analysis")
         
+        # run_context: the single bag of run-level parameters the ANALYSIS layer
+        # may need. Assembled here, at the simulation/analysis boundary -- the one
+        # place permitted to read config's shape. Adding a new analysis-relevant
+        # run parameter is one line here + one accessor in AnalysisData; the
+        # coordinator and prepare_analysis_data signatures never change again.
+        run_context = {
+            'simulation_duration': self.env.now,   # actual end time (not config's nominal)
+            'featured_restaurant_id': self.config.featured_restaurant_id,
+            # future: 'featured_tau', 'curation_policy', ... one line each
+        }
+
         # Return enhanced results structure
         return {
             'repositories': repositories,
             'system_snapshots': system_snapshots,
             'event_records': self.event_collector_registry.get_all_records(),
-            'simulation_duration': self.env.now,   # NEW: actual end time, travels with the data
+            'run_context': run_context,            # replaces the flat scalars
         }

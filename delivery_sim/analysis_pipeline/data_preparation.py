@@ -211,7 +211,7 @@ class AnalysisData:
     calculation functions, providing clean and consistent interfaces.
     """
     
-    def __init__(self, populations, warmup_period=None, simulation_duration=None):
+    def __init__(self, populations, warmup_period=None, run_context=None):
         """
         Initialize with pre-computed populations.
         
@@ -227,20 +227,26 @@ class AnalysisData:
         self.post_warmup_snapshots = populations.get_post_warmup_snapshots()  # NEW
         self.post_warmup_event_records = populations.get_post_warmup_event_records()
 
-        # Window scalars for rate metrics (e.g. throughput). Kept as plain
-        # attributes so one-level metric functions keep the single-arg
-        # (analysis_data) convention -- no dispatcher change, no config object
-        # leaking into the metrics layer.
+        # run_context: the run-level parameter bag from the simulation boundary.
+        # Metric functions read the NAMED accessors below (never config, never
+        # this dict directly), preserving the metrics/config firewall while
+        # making new parameters a one-line addition rather than a four-site
+        # thread.
+        self._run_context = run_context or {}
         self.warmup_period = warmup_period
-        self.simulation_duration = simulation_duration
+
+        # Named accessors -- add one line here per new run parameter.
+        self.simulation_duration = self._run_context.get('simulation_duration')
+        self.featured_restaurant_id = self._run_context.get('featured_restaurant_id')
+
         self.analysis_window_length = (
-            simulation_duration - warmup_period
-            if (simulation_duration is not None and warmup_period is not None)
+            self.simulation_duration - warmup_period
+            if (self.simulation_duration is not None and warmup_period is not None)
             else None
         )
 
-def prepare_analysis_data(repositories, warmup_period, system_snapshots=None, event_records=None, 
-                          simulation_duration=None):
+def prepare_analysis_data(repositories, warmup_period, system_snapshots=None, event_records=None,
+                           run_context=None):
     """
     Main entry point for creating analysis-ready data populations.
     
@@ -252,14 +258,14 @@ def prepare_analysis_data(repositories, warmup_period, system_snapshots=None, ev
         warmup_period: Duration to exclude from analysis
         system_snapshots: List of system state snapshots (optional)
         event_records
+        run_context: dict of run-level params (simulation_duration, featured_restaurant_id, ...)
         
     Returns:
         AnalysisData: Container with all populations ready for metric calculations
     """
     populations = AnalyticalPopulations(repositories, warmup_period, system_snapshots, event_records)
     return AnalysisData(populations, warmup_period=warmup_period,
-                    simulation_duration=simulation_duration)
-
+                        run_context=run_context)
 
 def get_analysis_time_window(simulation_duration, warmup_period):
     """

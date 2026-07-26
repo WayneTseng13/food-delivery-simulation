@@ -125,17 +125,18 @@ class ExperimentAnalysisPipeline:
         
         for i, raw_replication_result in enumerate(raw_replication_results):
             repositories = raw_replication_result['repositories']
-            system_snapshots = raw_replication_result.get('system_snapshots', [])  
-            event_records = raw_replication_result.get('event_records', {}) # NEW
-            simulation_duration = raw_replication_result.get('simulation_duration', None)  # NEW
+            system_snapshots = raw_replication_result.get('system_snapshots', [])
+            event_records = raw_replication_result.get('event_records', {})
+            run_context = raw_replication_result.get('run_context', {})   # single bag
 
             analysis_data = prepare_analysis_data(
-                repositories, 
+                repositories,
                 self.warmup_period,
-                system_snapshots,  
+                system_snapshots,
                 event_records,
-                simulation_duration=simulation_duration,   # NEW
+                run_context=run_context,          # one arg, not N scalars
             )
+            
             prepared_analysis_data.append(analysis_data)
             
             self.logger.debug(

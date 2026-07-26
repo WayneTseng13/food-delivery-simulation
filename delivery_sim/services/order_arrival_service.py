@@ -76,7 +76,15 @@ class OrderArrivalService:
 
             order_id = self.id_generator.next()
             customer_location = self._generate_customer_location()
-            restaurant_location, curation_result, customer_complied, featuring_penalty = \
+            # Read arrival-state BEFORE any recommendation, for every policy
+            # (including U). This is the honest "was an idle driver present?"
+            # read the curation policy also uses internally, but stamped here so
+            # it exists uniformly across policies.
+            idle_at_arrival = self.driver_repository.find_available_drivers()
+            arrival_state = 'immediate' if idle_at_arrival else 'queued'
+
+            (restaurant_location, curation_result, customer_complied,
+            featuring_penalty, origin_restaurant_id) = \
                 self._select_restaurant_location(customer_location)
 
             self.logger.debug(
@@ -86,14 +94,16 @@ class OrderArrivalService:
             )
 
             new_order = Order(
-                order_id=order_id,
-                restaurant_location=restaurant_location,
-                customer_location=customer_location,
-                arrival_time=self.env.now,
-                curation_result=curation_result,
-                customer_complied=customer_complied,
-                featuring_penalty=featuring_penalty,      # renamed; single field
-            )
+                        order_id=order_id,
+                        restaurant_location=restaurant_location,
+                        customer_location=customer_location,
+                        arrival_time=self.env.now,
+                        curation_result=curation_result,
+                        customer_complied=customer_complied,
+                        featuring_penalty=featuring_penalty,
+                        arrival_state=arrival_state,                  # NEW
+                        origin_restaurant_id=origin_restaurant_id,    # NEW
+                    )
 
             self.order_repository.add(new_order)
 
@@ -155,7 +165,7 @@ class OrderArrivalService:
             self.logger.debug(
                 f"[t={self.env.now:.2f}] No curation (U); customer chose "
                 f"restaurant {selected.restaurant_id} uniformly")
-            return selected.location, None, None, None
+            return selected.location, None, None, None, selected.restaurant_id
     
         # A curation policy is active: it ALWAYS produces a recommendation.
         recommendation, curation_result, featuring_penalty = \
@@ -173,7 +183,8 @@ class OrderArrivalService:
                 f"[t={self.env.now:.2f}] Recommendation accepted; "
                 f"restaurant {recommendation.restaurant_id} "
                 f"(curation_result={curation_result})")
-            return recommendation.location, curation_result, True, featuring_penalty
+            return (recommendation.location, curation_result, True,
+                featuring_penalty, recommendation.restaurant_id)
     
         # Rejection: sample uniformly from the other restaurants. With N=10 the
         # single-restaurant pathological case cannot occur, so no forced-comply guard.
@@ -186,7 +197,8 @@ class OrderArrivalService:
             f"restaurant {selected.restaurant_id} uniformly from {len(others)} "
             f"(recommendation was {recommendation.restaurant_id}, "
             f"curation_result={curation_result})")
-        return selected.location, curation_result, False, featuring_penalty
+        return (selected.location, curation_result, False,
+            featuring_penalty, selected.restaurant_id)
  
 
     def _generate_customer_location(self):

@@ -13,7 +13,8 @@ class Order:
     
     def __init__(self, order_id, restaurant_location, customer_location,
                 arrival_time, curation_result=None, customer_complied=None,
-                featuring_penalty=None):
+                featuring_penalty=None, arrival_state=None,
+                origin_restaurant_id=None):
         """Initialize a new order with its basic properties."""
         self.logger = get_logger("entities.order")
 
@@ -46,6 +47,27 @@ class Order:
         # or not featuring fired -- so the per-order distribution calibrates tau.
         self.featuring_penalty = featuring_penalty
         
+        # System state at the moment this order arrived, read BEFORE any
+        # recommendation was produced. Stamped for EVERY policy including U, so
+        # arrival_immediate_rate / arrival_queued_rate are computable
+        # policy-independently.
+        #   'immediate' : at least one idle driver existed at arrival
+        #   'queued'    : no idle driver existed at arrival
+        #   None        : not recorded (should not happen in normal runs)
+        # This is the true arrival-state mix, uncensored by completion -- unlike
+        # immediate_assignment_rate, which conditions on delivered orders and so
+        # is optimistic in the unbounded regime.
+        self.arrival_state = arrival_state                                   # NEW
+
+        # The restaurant this order ACTUALLY originated from -- i.e. the one the
+        # customer ended up ordering from after the compliance gate:
+        #   - the recommendation, if the customer complied
+        #   - a uniform random pick, if the customer rejected
+        #   - a uniform random pick, under Policy U (no recommendation)
+        # NOT the recommended restaurant when they differ. Used for
+        # featured_origin_rate (business capture) and per-restaurant load shares.
+        self.origin_restaurant_id = origin_restaurant_id                     # NEW
+
         # State and relationships
         self.state = OrderState.CREATED
         self.pair = None

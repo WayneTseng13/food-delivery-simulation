@@ -155,6 +155,64 @@ def calculate_system_throughput(analysis_data):
     }
 
 
+def calculate_arrival_state_rates(analysis_data): 
+    """ 
+    Fraction of arrivals that found the system in each state at arrival time.
+
+    Read from order.arrival_state, stamped at arrival for EVERY policy (U
+    included) BEFORE any recommendation. One degree of freedom: an arrival is
+    either 'immediate' (>=1 idle driver present) or 'queued' (none), so the two
+    rates sum to 1.
+
+    Denominator is ALL cohort orders (post-warmup arrivals) -- NOT completed
+    orders. This is the key difference from immediate_assignment_rate:
+
+        immediate_assignment_rate  -- numerator/denominator over COMPLETED orders.
+            Conditions on completion, so in the unbounded regime it drops the
+            (disproportionately queued) censored backlog and OVERSTATES the
+            immediate share. A performance metric ("of served orders, how many
+            instant"), regime-sensitive.
+
+        arrival_immediate_rate     -- over ALL arrivals. Uncensored, regime-robust.
+            A system-state metric ("at arrival, how often was a driver idle").
+
+    Both are legitimate; they answer different questions. Prefer this one for the
+    true arrival-state mix and for the endogenous-state diagnostic vs tau (as
+    featuring bites, efficiency drops, idle drivers thin out, this shifts toward
+    'queued').
+
+    Args:
+        analysis_data: AnalysisData with cohort_orders.
+
+    Returns:
+        dict: total_arrivals, immediate_arrivals,
+            arrival_immediate_rate, arrival_queued_rate.
+    """
+    cohort_orders = analysis_data.cohort_orders
+    total = len(cohort_orders)
+
+    # Orders with arrival_state stamped. Guards against pre-instrumentation runs
+    # or any order that missed the stamp (should be none in normal runs).
+    stamped = [o for o in cohort_orders if o.arrival_state is not None]
+    n = len(stamped)
+
+    if n == 0:
+        return {
+            'total_arrivals': total,
+            'immediate_arrivals': 0,
+            'arrival_immediate_rate': 0.0,
+            'arrival_queued_rate': 0.0,
+        }
+
+    immediate = sum(1 for o in stamped if o.arrival_state == 'immediate')
+
+    return {
+        'total_arrivals': n,
+        'immediate_arrivals': immediate,
+        'arrival_immediate_rate': immediate / n,
+        'arrival_queued_rate':    (n - immediate) / n,
+    }
+
 def calculate_all_entity_derived_system_metrics(analysis_data):
     """
     Calculate all entity-derived system metrics for a replication.
@@ -177,6 +235,8 @@ def calculate_all_entity_derived_system_metrics(analysis_data):
     immediate_assignment_metrics = calculate_immediate_assignment_rate(analysis_data)
 
     throughput_metrics = calculate_system_throughput(analysis_data)    # NEW
+
+    arrival_state_metrics = calculate_arrival_state_rates(analysis_data)   # NEW
     
     return {
         # Completion metrics
@@ -194,4 +254,9 @@ def calculate_all_entity_derived_system_metrics(analysis_data):
         
         #Throughput metrics
         'system_throughput': throughput_metrics['system_throughput'],        # NEW
+
+        # Arrival-state mix (uncensored; all policies)                     # NEW
+        'arrival_immediate_rate': arrival_state_metrics['arrival_immediate_rate'],
+        'arrival_queued_rate':    arrival_state_metrics['arrival_queued_rate'],
+        'total_arrivals':         arrival_state_metrics['total_arrivals'],
     }

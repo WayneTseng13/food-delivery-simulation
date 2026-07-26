@@ -163,7 +163,13 @@ METRIC_CONFIGURATIONS = {
             {'metric_name': 'system_throughput', 
              'target_statistic': 'mean',
                'construct_ci': True
-            }
+            },
+            {'metric_name': 'arrival_immediate_rate',
+              'target_statistic': 'mean',
+                'construct_ci': True},
+            {'metric_name': 'arrival_queued_rate',
+                'target_statistic': 'mean',
+                'construct_ci': True},
         ],
         'description': 'Entity-derived system effectiveness metrics'
     },
@@ -211,15 +217,6 @@ METRIC_CONFIGURATIONS = {
     # ==========================================================================
     # ONE-LEVEL PATTERN: CURATION METRICS
     # ==========================================================================
-    # Characteristics:
-    # - Derived from order.curation_result attribute, stamped at arrival time
-    # - Warmup filtering inherited from cohort_orders (arrival_time >= warmup_period)
-    # - Returns scalar directly (no entity iteration or aggregation at this phase)
-    # - Only meaningful when ProximityCurationPolicy is active; returns 0.0 for
-    #   UniformPolicy runs (curation_result = None on all orders)
-    #
-    # Fallback rate: fraction of curation attempts where no idle drivers existed,
-    # characterising how often the R-D signal was actually operative per regime.
 
     'curation_metrics': {
         'aggregation_pattern': 'one_level',
@@ -228,22 +225,17 @@ METRIC_CONFIGURATIONS = {
         'data_key': None,
         'ci_config': [
             {
-                'metric_name': 'curation_edge_manufacture_rate',
+                'metric_name': 'featured_recommendation_rate',
                 'target_statistic': 'mean',
                 'construct_ci': True
             },
             {
-                'metric_name': 'curation_single_immediate_rate',
-                'target_statistic': 'mean',
-                'construct_ci': True
-            },
-            {
-                'metric_name': 'curation_single_queued_rate',
+                'metric_name': 'featured_origin_rate',
                 'target_statistic': 'mean',
                 'construct_ci': True
             },
         ],
-        'description': 'Curation operating envelope metrics (Policy X fallback rate; Policy X\' branch activation rates)'
+        'description': 'Featuring decision rate (offered) and origin/capture rate (realized) for blended/featured curation'
     }
 
 }
