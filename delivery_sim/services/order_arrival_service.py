@@ -14,7 +14,7 @@ class OrderArrivalService:
     """
 
     def __init__(self, env, event_dispatcher, order_repository,
-                    restaurant_repository, config, id_generator,
+                    restaurant_repository, driver_repository,config, id_generator,
                     operational_rng_manager, curation_policy=None):
             
             """Initialize the order arrival service."""
@@ -25,6 +25,7 @@ class OrderArrivalService:
             self.event_dispatcher = event_dispatcher
             self.order_repository = order_repository
             self.restaurant_repository = restaurant_repository
+            self.driver_repository = driver_repository 
             self.config = config
             self.id_generator = id_generator
 

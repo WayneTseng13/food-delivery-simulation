@@ -248,6 +248,7 @@ class SimulationRunner:
                 event_dispatcher=self.event_dispatcher,
                 order_repository=self.order_repository,
                 restaurant_repository=self.restaurant_repository,
+                driver_repository=self.driver_repository,
                 config=self.config,
                 id_generator=self.id_generators['order'],
                 operational_rng_manager=self.operational_rng,

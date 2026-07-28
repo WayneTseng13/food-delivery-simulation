@@ -571,8 +571,8 @@ CHECKS = [
     ('order_metrics',  'delivery_travel_time', 'mean_of_means'),
     ('order_metrics',  'fulfillment_time',     'mean_of_means'),
     ('system_metrics', 'system_throughput',    None),
-    ('system_metrics', 'completion_rate',      None),
-    ('system_metrics', 'pairing_rate',         None),
+    ('system_metrics', 'system_completion_rate',      None),
+    ('system_metrics', 'system_pairing_rate',         None),
     ('system_metrics', 'arrival_immediate_rate', None),
 ]
  
@@ -584,12 +584,12 @@ for group, key, sub in CHECKS:
     a = _pe(op_res, group, key, sub)
     b = _pe(bl_res, group, key, sub)
     if a is None or b is None:
-        verdict = "MISSING"
-        ok = False
+            verdict = "MISSING"
+            missing = True          # track separately
     else:
         ok = abs(a - b) <= TOL
         verdict = "yes" if ok else f"NO (d={a-b:.2e})"
-    all_identical = all_identical and ok
+        all_identical = all_identical and ok
     label = f"{group.split('_')[0]}.{key}"
     sa = f"{a:.6f}" if a is not None else "None"
     sb = f"{b:.6f}" if b is not None else "None"
