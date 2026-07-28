@@ -234,6 +234,18 @@ METRIC_CONFIGURATIONS = {
                 'target_statistic': 'mean',
                 'construct_ci': True
             },
+            {'metric_name': 'featured_throughput',
+             'target_statistic': 'mean',
+             'construct_ci': True
+            },
+            {'metric_name': 'featured_completion_rate',
+             'target_statistic': 'mean',
+             'construct_ci': True
+            },
+            {'metric_name': 'featured_delivered_share',
+             'target_statistic': 'mean',
+             'construct_ci': True
+            },
         ],
         'description': 'Featuring decision rate (offered) and origin/capture rate (realized) for blended/featured curation'
     }

@@ -68,59 +68,113 @@ def _featured_id(analysis_data):
 
 def calculate_all_curation_metrics(analysis_data):
     """
-    Calculate featuring decision + capture metrics for a replication.
-
+    Calculate featuring decision + business-outcome metrics for a replication.
+ 
     Entry point called by the analysis pipeline (one_level pattern).
-
+ 
+    Arrival-side (the PROMISE -- demand routed to R_F):
+        featured_recommendation_rate  offered;   p-independent
+        featured_origin_rate          captured;  p-dependent
+ 
+    Completion-side (the DELIVERY -- demand actually served from R_F):
+        featured_throughput           delivered R_F orders per unit time
+        featured_completion_rate      delivered R_F orders / arrived R_F orders
+        featured_delivered_share      delivered R_F orders / all delivered orders
+ 
+    Why the completion side matters: featured_origin_rate counts arrivals, so an
+    R_F order that sits in backlog forever and never delivers still counts as
+    'captured'. Under saturation that overstates realized business value. The
+    completion-side metrics are what survive the cliff; their divergence from
+    origin_rate as tau rises LOCATES the cliff from the business side.
+ 
     Args:
-        analysis_data: AnalysisData with cohort_orders
-
+        analysis_data: AnalysisData with cohort_orders, cohort_completed_orders,
+                       featured_restaurant_id, analysis_window_length.
+ 
     Returns:
-        dict:
-            featured_recommendation_rate  in [0, 1]
-            featured_origin_rate          in [0, 1]
-            featured_recommendations      raw count (diagnostic)
-            featured_origins              raw count (diagnostic)
-            total_curated                 raw count (diagnostic)
+        dict (all keys always present; 0.0 when undefined, e.g. U / operational).
     """
     cohort_orders = analysis_data.cohort_orders
-
-    # Curated orders = a recommendation was produced (excludes Policy U, whose
-    # curation_result is None). In a featuring run this equals all cohort orders.
     curated = [o for o in cohort_orders if o.curation_result is not None]
     n_curated = len(curated)
-
+ 
     featured_id = _featured_id(analysis_data)
-
+ 
+    # Empty / Policy U: every featuring metric undefined -> 0.0.
     if n_curated == 0:
-        # Policy U (or empty cohort): featuring metrics undefined -> 0.0.
         return {
             'featured_recommendation_rate': 0.0,
             'featured_origin_rate':         0.0,
+            'featured_throughput':          0.0,
+            'featured_completion_rate':     0.0,
+            'featured_delivered_share':     0.0,
             'featured_recommendations':     0,
             'featured_origins':             0,
+            'featured_delivered':           0,
             'total_curated':                0,
         }
-
-    # (1) Recommendation rate -- decision only, p-independent.
+ 
+    # ----- arrival-side (existing) -----
     featured_recs = sum(
         1 for o in curated
         if o.curation_result is not None and o.curation_result.startswith('featured_')
     )
-
-    # (2) Origin rate -- realized capture, p-dependent. Denominated on all cohort
-    # orders (share of total demand), which for a featuring run equals n_curated.
+ 
     if featured_id is None:
         featured_origins = 0
     else:
         featured_origins = sum(
             1 for o in curated if o.origin_restaurant_id == featured_id
         )
-
+ 
+    # ----- completion-side (new) -----
+    # cohort_completed_orders: delivered orders that ARRIVED in the analysis
+    # window (same cohort filter used by system completion/throughput).
+    completed = analysis_data.cohort_completed_orders
+    n_completed = len(completed)
+ 
+    if featured_id is None:
+        featured_delivered = 0
+    else:
+        featured_delivered = sum(
+            1 for o in completed if o.origin_restaurant_id == featured_id
+        )
+ 
+    # Throughput: delivered R_F orders per unit time. Same window as
+    # system_throughput, so directly comparable (featured_throughput <=
+    # system_throughput always). None window -> 0.0 (matches system_throughput).
+    window = getattr(analysis_data, 'analysis_window_length', None)
+    if window is not None and window > 0:
+        featured_throughput = featured_delivered / window
+    else:
+        featured_throughput = 0.0
+ 
+    # Completion rate SPECIFIC to R_F: of orders that originated at R_F, what
+    # fraction delivered. Isolates whether R_F itself is starved, separate from
+    # system-wide completion. If system completion is 0.85 but this is 0.60 at
+    # high tau, featuring is cannibalizing its own sponsor.
+    if featured_origins > 0:
+        featured_completion_rate = featured_delivered / featured_origins
+    else:
+        featured_completion_rate = 0.0   # no R_F origins -> undefined -> 0.0
+ 
+    # R_F's share of all delivered orders (business share of realized throughput).
+    if n_completed > 0:
+        featured_delivered_share = featured_delivered / n_completed
+    else:
+        featured_delivered_share = 0.0
+ 
     return {
+        # arrival-side (promise)
         'featured_recommendation_rate': featured_recs    / n_curated,
         'featured_origin_rate':         featured_origins / n_curated,
+        # completion-side (delivery)
+        'featured_throughput':          featured_throughput,
+        'featured_completion_rate':     featured_completion_rate,
+        'featured_delivered_share':     featured_delivered_share,
+        # raw counts (diagnostics)
         'featured_recommendations':     featured_recs,
         'featured_origins':             featured_origins,
+        'featured_delivered':           featured_delivered,
         'total_curated':                n_curated,
     }
