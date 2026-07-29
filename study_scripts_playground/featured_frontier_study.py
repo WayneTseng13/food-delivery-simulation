@@ -706,30 +706,101 @@ print("        Backlog/Fulfil/Assign/etc. are run-length-biased there (descripti
 print("Customer exp: Fulfil = Assign + Pickup + Deliv (min). Attribution: featuring should inflate Deliv (R-C leg).")
 print("Mechanism: Pairing = consolidation-buyback probe (flat/falling across tau => no buyback).")
 print("Business: F_origin = arrivals routed to R10 (organic share at U/X''; rises with tau).")
-# %% CELL 17: Ad-hoc Analysis (Placeholder)
-"""
-PLACEHOLDER FOR AD-HOC ANALYSIS
+# %% CELL 17: Frontier Plot — business capture vs operational cost
+# ==============================================================================
+# THE headline figure: the operational-business trade-off traced by tau.
+#
+#   x = F_origin (business capture: % of demand routed to R10)
+#   y = fulfillment time (operational cost)
+#   one point per curation arm, connected in tau order (X'' -> blend -> F),
+#   one PANEL per ratio, two lines per panel (p=0.5, p=1.0).
+#
+# Design choices for legibility:
+#   - Policy U is OMITTED. U is not a frontier point -- it is the no-curation
+#     reference, dominated on both axes (worse ops AND only organic capture). It
+#     floats far off the curve and stretches the y-axis. Note it in text instead.
+#   - One ratio per panel (not all ratios overlaid) so lines don't tangle.
+#   - CI shown as a light shaded band, not error bars, to keep the trend readable.
+#   - Ratio 12 omitted: unbounded regime, fulfillment is run-length-biased there;
+#     the frontier is a steady-state object. (Regime plot handles ratio 12.)
+#
+# Reads the `rows` list from CELL 16 (run CELL 16 first).
+# ==============================================================================
 
-Reserved for exploratory analysis specific to the compliance study. Potential
-analyses:
-- Compliance sensitivity curves: assignment time / queue size vs p, faceted by
-  (ratio, pairing), with X and X' as two lines.
-- X' branch mix vs p: stacked-area plot showing how (pair_queued, single_imm,
-  single_queued) shares shift as p decreases.
-- Pairing rate vs p: does X' construct pairs more actively under partial
-  compliance than X does?
-- Robustness ratio: at each (ratio, pairing), compute (X' improvement over X)
-  at each p — does the ratio shrink, hold, or grow as p decreases?
-- Endpoint reproducibility check: numerical comparison of p=1.0 results with
-  Study 3 and Study 4 results for the corresponding design points.
+import matplotlib.pyplot as plt
 
-To be developed based on Cell 16 findings.
-"""
+assert 'rows' in dir(), "CELL 17 needs `rows` from CELL 16. Run CELL 16 first."
 
-print("\n" + "="*80)
-print("AD-HOC ANALYSIS PLACEHOLDER")
-print("="*80)
-print("Reserved for exploratory analysis based on results.")
-print("="*80)
+STABLE_RATIOS = [7.0, 10.0]
+FEATURED_ID = 'R10'
+YCOL, YCI, YLABEL = 'fulfil', 'fulfil_ci', 'Fulfillment time (min)'
+
+# Frontier arms only (U dropped); tau order.
+_ARM_ORDER = {'tau0': 0, 'tau1': 1, 'tau3': 2, 'tau5': 3, 'tauInf': 4}
+_ARM_LABEL = {'tau0': "X''", 'tau1': 'τ1', 'tau3': 'τ3', 'tau5': 'τ5', 'tauInf': 'F'}
+
+_pcolor = {0.5: '#1565C0', 1.0: '#2E7D32'}   # p distinguished by color now
+_pstyle = {0.5: '--', 1.0: '-'}
+
+plot_ratios = [r for r in sorted(set(r['ratio'] for r in rows)) if r in STABLE_RATIOS]
+ps = sorted(set(r['p'] for r in rows))
+
+
+def frontier_series(ratio, p):
+    block = [r for r in rows
+             if r['ratio'] == ratio and r['p'] == p and r['arm'] in _ARM_ORDER]
+    block.sort(key=lambda r: _ARM_ORDER[r['arm']])
+    xs = [r['orig'] * 100 for r in block]
+    ys = [r[YCOL] for r in block]
+    ye = [(r[YCI] or 0) for r in block]
+    arms = [r['arm'] for r in block]
+    return xs, ys, ye, arms
+
+
+fig, axes = plt.subplots(1, len(plot_ratios), figsize=(6.2 * len(plot_ratios), 5),
+                         sharey=False)
+if len(plot_ratios) == 1:
+    axes = [axes]
+
+for ax, ratio in zip(axes, plot_ratios):
+    for p in ps:
+        xs, ys, ye, arms = frontier_series(ratio, p)
+        if not xs or any(v is None for v in xs + ys):
+            continue
+        color = _pcolor[p]
+
+        # CI as a light shaded band around the line
+        ylo = [y - e for y, e in zip(ys, ye)]
+        yhi = [y + e for y, e in zip(ys, ye)]
+        ax.fill_between(xs, ylo, yhi, color=color, alpha=0.12, zorder=1)
+
+        ax.plot(xs, ys, color=color, linestyle=_pstyle[p], marker='o',
+                markersize=6, linewidth=2, label=f"p = {p:.1f}", zorder=3)
+
+        # label the poles (X'' and F) once, on the p=1.0 line only
+        if p == 1.0:
+            for x, y, arm in zip(xs, ys, arms):
+                if arm in ('tau0', 'tauInf'):
+                    ax.annotate(_ARM_LABEL[arm], (x, y),
+                                textcoords="offset points", xytext=(6, 6),
+                                fontsize=10, fontweight='bold', color=color)
+
+    ax.set_title(f"Ratio {ratio:.0f}", fontsize=12)
+    ax.set_xlabel("Business capture — F_origin (% of demand at R10)")
+    ax.set_ylabel(YLABEL)
+    ax.grid(True, alpha=0.25)
+    ax.legend(fontsize=10, title="compliance", framealpha=0.9)
+    ax.set_xlim(left=0)
+
+fig.suptitle(
+    f"Operational–business frontier traced by τ   (featured = {FEATURED_ID})\n"
+    f"each point = one policy (X'' → τ1 → τ3 → τ5 → F);  U omitted (dominated)",
+    fontsize=12)
+fig.tight_layout(rect=[0, 0, 1, 0.92])
+
+
+print("\nReading it: left->right along a line = raising τ (X''→F), buying capture")
+print("with operational cost. Convex (flat then steep) = capture is cheap near the")
+print("operational pole and expensive near F → feature lightly.")
 
 # %%
