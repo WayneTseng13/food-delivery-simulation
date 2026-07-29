@@ -1,48 +1,98 @@
 # delivery_sim/metrics/system/queue_dynamics_metrics.py
+
 def calculate_growth_rate(analysis_data, series_key):
     """
-    Calculate growth rate of a queue series.
-
+    Growth rate (linear trend) of a queue series over the post-warmup window,
+    estimated by ordinary least squares (OLS) slope.
+ 
+    Fits queue(t) ~= a + b*t by minimizing summed squared residuals and returns
+    b, in units/minute. Using all snapshots (not just endpoints) averages out
+    per-snapshot fluctuation, giving a low-variance trend estimate. Sign and
+    interpretation are unchanged: b > 0 => queue growing (unbounded regime),
+    b ~ 0 => bounded, b < 0 => draining.
+ 
+    The growth rate is the ONE queue metric that stays meaningful in the
+    unbounded regime: unlike average backlog (which scales with run length when
+    the queue never settles), the asymptotic slope is a genuine system property
+    and is comparable across deteriorating systems (a smaller positive slope =
+    slower deterioration).
+ 
     Args:
-        analysis_data: AnalysisData object with post_warmup_snapshots
+        analysis_data: AnalysisData object with post_warmup_snapshots.
         series_key: Snapshot key naming the series, e.g.
-                    'unassigned_delivery_entities' (entity units) or
-                    'unassigned_order_units' (order units)
-
+                    'unassigned_order_units' or 'unassigned_delivery_entities'.
+ 
     Returns:
-        dict: growth_rate (units/minute) and supporting metadata
+        dict:
+            growth_rate     OLS slope (units/minute)
+            initial_value   first snapshot value  (kept for continuity)
+            terminal_value  last snapshot value   (kept for continuity)
+            window_length   t_last - t_first
+            n_snapshots     number of snapshots used
+            intercept       OLS intercept a (diagnostic; additive)
+            r_squared       fraction of variance explained (diagnostic; additive)
     """
     snapshots = analysis_data.post_warmup_snapshots
-
-    if len(snapshots) < 2:
+    n = len(snapshots)
+ 
+    # Need at least 2 points to define a slope; match old guard's return shape.
+    if n < 2:
         return {
             'growth_rate': 0.0,
             'initial_value': 0.0,
             'terminal_value': 0.0,
             'window_length': 0.0,
-            'n_snapshots': len(snapshots)
+            'n_snapshots': n,
+            'intercept': 0.0,
+            'r_squared': 0.0,
         }
-
+ 
+    times = [s['timestamp'] for s in snapshots]
     series = [s[series_key] for s in snapshots]
-
+ 
     initial_value = series[0]
     terminal_value = series[-1]
-
-    initial_time = snapshots[0]['timestamp']
-    terminal_time = snapshots[-1]['timestamp']
-    window_length = terminal_time - initial_time
-
-    if window_length > 0:
-        growth_rate = (terminal_value - initial_value) / window_length
+    window_length = times[-1] - times[0]
+ 
+    # ----- OLS slope, closed form -----
+    # b = sum((t - t_mean)(y - y_mean)) / sum((t - t_mean)^2)
+    # a = y_mean - b * t_mean
+    t_mean = sum(times) / n
+    y_mean = sum(series) / n
+ 
+    s_tt = 0.0   # sum of (t - t_mean)^2
+    s_ty = 0.0   # sum of (t - t_mean)(y - y_mean)
+    for t, y in zip(times, series):
+        dt = t - t_mean
+        s_tt += dt * dt
+        s_ty += dt * (y - y_mean)
+ 
+    if s_tt > 0.0:
+        slope = s_ty / s_tt
+        intercept = y_mean - slope * t_mean
     else:
-        growth_rate = 0.0
-
+        # All snapshots at the same timestamp (degenerate); no slope defined.
+        slope = 0.0
+        intercept = y_mean
+ 
+    # ----- R^2 (diagnostic: how linear is the trend) -----
+    # 1 - SS_res / SS_tot. Guards the constant-series case (SS_tot == 0).
+    ss_tot = 0.0
+    ss_res = 0.0
+    for t, y in zip(times, series):
+        ss_tot += (y - y_mean) ** 2
+        y_hat = intercept + slope * t
+        ss_res += (y - y_hat) ** 2
+    r_squared = (1.0 - ss_res / ss_tot) if ss_tot > 0.0 else 0.0
+ 
     return {
-        'growth_rate': growth_rate,
+        'growth_rate': slope,
         'initial_value': initial_value,
         'terminal_value': terminal_value,
         'window_length': window_length,
-        'n_snapshots': len(snapshots)
+        'n_snapshots': n,
+        'intercept': intercept,
+        'r_squared': r_squared,
     }
 
 

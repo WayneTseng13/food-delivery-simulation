@@ -564,165 +564,148 @@ print(f"\n✓ Analysis pipeline complete for all {len(design_analysis_results)} 
 print(f"✓ Results stored in 'design_analysis_results'")
 
 # %% CELL 16: Extract and Present Key Metrics
+# ==============================================================================
+# FEATURED / BLENDED CURATION FRONTIER STUDY -- settled minimal metric matrix.
 #
-# FEATURED / BLENDED CURATION FRONTIER STUDY.
+# One flat table: every (ratio, arm, p) cell is a row, sorted ratio -> tau -> p.
+# Every value is point estimate +/- 95% CI half-width.
 #
-# One results table per (ratio, p), rows = curation arms in tau order
-# (U, tau0, tau1, tau3, tau5, tauInf). Columns span three channels:
+# Columns, by purpose:
+#   REGIME ID        : BacklogGrowth (OLS slope; CI vs 0 classifies regime),
+#                      AvgBacklog (level; run-length-dependent when unstable)
+#   CUSTOMER EXP     : Fulfillment; + Assign / Pickup / Delivery (decomposition)
+#   MECHANISM        : PairingRate (consolidation-buyback probe)
+#   BUSINESS         : F_origin (demand captured at R10)
 #
-#   OPERATIONAL (cost) : assignment time, throughput, backlog, backlog growth
-#                        -> backlog growth crossing 0 as tau rises = the CLIFF.
-#   BUSINESS (benefit) : featured_origin_rate (PROMISE, arrivals routed to R_F)
-#                        featured_throughput  (DELIVERY, R_F orders served / time)
-#                        featured_completion_rate (is R_F itself starved?)
-#                        -> origin rising while throughput stalls = cliff, business side.
-#   DECISION           : featured_recommendation_rate (how often R_F offered).
-#
-# U rows: featuring columns are ~0 (no curation); U is the no-curation reference
-# for the operational columns. operational (tau0) rows: featuring columns reflect
-# only R_F's ORGANIC share (origin > 0, recommendation = 0, since operational
-# mode emits no 'featured_' label).
- 
-print("\n" + "="*80)
-print("KEY PERFORMANCE METRICS: FEATURED / BLENDED CURATION FRONTIER STUDY")
-print("="*80)
- 
+# Dropped (deliberately): F_thru, F_complete, F_recomm -- see metric-matrix notes.
+# Regime rule: in UNSTABLE cells (growth CI clears 0), compare growth ONLY; other
+# columns are run-length-biased there and are descriptive, not comparative.
+# ==============================================================================
+
+print("\n" + "="*160)
+print("KEY PERFORMANCE METRICS: FEATURED / BLENDED CURATION FRONTIER STUDY  (featured = R10)")
+print("="*160)
+
 import re
- 
-# Design-point names from CELL 8: f"ratio_{ratio:.1f}_{arm}_p{p:.1f}"
-#   arm in {U, tau0, tau1, tau3, tau5, tauInf}
+
 _DESIGN_NAME_RE = re.compile(
     r'ratio_([\d.]+)_(U|tau0|tau1|tau3|tau5|tauInf)_p([\d.]+)')
- 
-# Sort key: tau order for rows within a (ratio, p) block.
+
 _ARM_ORDER = {'U': 0, 'tau0': 1, 'tau1': 2, 'tau3': 3, 'tau5': 4, 'tauInf': 5}
 _ARM_LABEL = {
-    'U': 'U (none)', 'tau0': "X'' (op)", 'tau1': 'blend t=1',
-    'tau3': 'blend t=3', 'tau5': 'blend t=5', 'tauInf': 'F (feat)',
+    'U': 'U', 'tau0': "X''", 'tau1': 'blend(1)', 'tau3': 'blend(3)',
+    'tau5': 'blend(5)', 'tauInf': 'F',
 }
- 
- 
+
+
 def extract_design_point(design_name):
     m = _DESIGN_NAME_RE.match(design_name)
     if not m:
         return None, None, None
     return float(m.group(1)), m.group(2), float(m.group(3))
- 
- 
-# ----- extract every cell into a flat list of dicts -----
+
+
+def point_and_ci_width(metric_dict, default_estimate=None):
+    """Return (point_estimate, ci_half_width) from a metric's stats dict."""
+    if not metric_dict:
+        return default_estimate, None
+    est = metric_dict.get('point_estimate', default_estimate)
+    ci = metric_dict.get('confidence_interval', [None, None])
+    half = (ci[1] - ci[0]) / 2 if ci[0] is not None else None
+    return est, half
+
+
+# ----- pull every cell -----
 rows = []
 for design_name, analysis_result in design_analysis_results.items():
     ratio, arm, p = extract_design_point(design_name)
     if ratio is None:
         continue
- 
+
     scis = analysis_result.get('statistics_with_cis', {})
- 
-    def _get(group, key, sub=None, default=None):
-        block = scis.get(group, {})
-        entry = block.get(key, {})
-        if sub is not None:
-            entry = entry.get(sub, {})
-        est = entry.get('point_estimate', default)
-        ci = entry.get('confidence_interval', [None, None])
-        half = (ci[1] - ci[0]) / 2 if ci[0] is not None else None
-        return est, half
- 
-    assign, assign_ci = _get('order_metrics', 'assignment_time', 'mean_of_means')
-    thru, thru_ci = _get('system_metrics', 'system_throughput')
-    # backlog / growth: order-unit queue dynamics (mechanism-invariant series).
-    backlog, backlog_ci = _get('queue_dynamics_metrics',
-                               'average_unassigned_order_units')
-    growth, growth_ci = _get('queue_dynamics_metrics',
-                             'unassigned_order_units_growth_rate')
- 
-    # business channel
-    orig, orig_ci = _get('curation_metrics', 'featured_origin_rate')
-    fthru, fthru_ci = _get('curation_metrics', 'featured_throughput')
-    fcomp, fcomp_ci = _get('curation_metrics', 'featured_completion_rate')
-    rec, rec_ci = _get('curation_metrics', 'featured_recommendation_rate')
- 
-    rows.append(dict(
-        ratio=ratio, arm=arm, p=p,
-        assign=assign, thru=thru, backlog=backlog, growth=growth, growth_ci=growth_ci,
-        orig=orig, fthru=fthru, fcomp=fcomp, rec=rec,
-    ))
- 
- 
-def _f(v, w=6, d=3):
-    return f"{v:{w}.{d}f}" if v is not None else " " * (w - 3) + "N/A"
- 
- 
-def _pct(v, d=1):
-    return f"{v*100:5.{d}f}%" if v is not None else "  N/A"
- 
- 
-# ----- one table per (ratio, p), rows in tau order -----
-ratios = sorted(set(r['ratio'] for r in rows))
-ps = sorted(set(r['p'] for r in rows))
- 
-for ratio in ratios:
-    for p in ps:
-        block = [r for r in rows if r['ratio'] == ratio and r['p'] == p]
-        block.sort(key=lambda r: _ARM_ORDER.get(r['arm'], 99))
-        if not block:
-            continue
- 
-        print(f"\n{'='*100}")
-        print(f"  RATIO {ratio:.0f}   p={p:.1f}"
-              f"   (featured = R10)")
-        print(f"{'='*100}")
-        print(f"{'arm':<12}"
-              f"{'assign':>9}{'thru':>8}{'backlog':>9}{'growth':>10}"
-              f"{'|':>3}"
-              f"{'f_orig':>9}{'f_thru':>9}{'f_comp':>9}{'f_rec':>9}")
-        print(f"{'':12}"
-              f"{'(min)':>9}{'(/t)':>8}{'(ord)':>9}{'(/t)':>10}"
-              f"{'|':>3}"
-              f"{'promise':>9}{'deliv':>9}{'R10cmp':>9}{'offered':>9}")
-        print("-" * 100)
- 
-        for r in block:
-            growth_str = _f(r['growth'], 7, 4)
-            # flag positive growth (cliff indicator)
-            cliff = " *" if (r['growth'] is not None and r['growth'] > 0) else "  "
-            print(f"{_ARM_LABEL.get(r['arm'], r['arm']):<12}"
-                  f"{_f(r['assign'],9,2)}"
-                  f"{_f(r['thru'],8,3)}"
-                  f"{_f(r['backlog'],9,2)}"
-                  f"{growth_str:>8}{cliff}"
-                  f"{'|':>3}"
-                  f"{_pct(r['orig']):>9}"
-                  f"{_f(r['fthru'],9,4)}"
-                  f"{_pct(r['fcomp']):>9}"
-                  f"{_pct(r['rec']):>9}")
- 
-        print("-" * 100)
-        print("  * = positive backlog growth (unstable / past cliff)")
-        print("  f_orig = arrivals routed to R10 (promise); "
-              "f_thru = R10 orders delivered per unit time (delivery);")
-        print("  f_comp = fraction of R10 orders delivered (R10 starvation); "
-              "f_rec = arrivals where R10 was recommended.")
- 
-print("\n" + "="*80)
-print("READING THE TABLES")
-print("="*80)
-print("""
-CLIFF (operational side): within a (ratio,p) block, read 'growth' down the tau
-  order (X'' -> F). If it crosses from <=0 to >0 (marked *), featuring has pushed
-  the system unstable; the tau where it crosses is the cliff location. Expect NO
-  crossing at ratio 7 (smooth frontier), a crossing at ratio 10 (the probe), and
-  already-positive at ratio 12 (past the edge at baseline).
- 
-CLIFF (business side): read f_orig vs f_thru down the same column. In the stable
-  regime both rise with tau. At the cliff they SPLIT -- f_orig keeps climbing (you
-  keep routing demand to R10) while f_thru stalls or falls (R10 can't clear it).
-  f_comp dropping below system completion confirms R10 is starving its own sponsor.
- 
-FRONTIER: f_orig (business, x) vs thru or assign (operational cost, y) across the
-  tau rows traces the operational-business frontier. Its curvature (convex =
-  cheap early capture then a cliff; linear = constant price) is the shape finding.
-""")
+    om = scis.get('order_metrics', {})
+    qd = scis.get('queue_dynamics_metrics', {})
+    sm = scis.get('system_metrics', {})
+    cm = scis.get('curation_metrics', {})
+
+    r = dict(ratio=ratio, arm=arm, p=p)
+
+    # customer experience + attribution (order_metrics, mean_of_means)
+    r['fulfil'], r['fulfil_ci'] = point_and_ci_width(om.get('fulfillment_time', {}).get('mean_of_means', {}))
+    r['assign'], r['assign_ci'] = point_and_ci_width(om.get('assignment_time', {}).get('mean_of_means', {}))
+    r['pickup'], r['pickup_ci'] = point_and_ci_width(om.get('pickup_travel_time', {}).get('mean_of_means', {}))
+    r['deliv'],  r['deliv_ci']  = point_and_ci_width(om.get('delivery_travel_time', {}).get('mean_of_means', {}))
+
+    # regime id (queue_dynamics; order-unit series, mechanism-invariant)
+    r['growth'],  r['growth_ci']  = point_and_ci_width(qd.get('unassigned_order_units_growth_rate', {}))
+    r['backlog'], r['backlog_ci'] = point_and_ci_width(qd.get('average_unassigned_order_units', {}))
+
+    # mechanism
+    r['pair'], r['pair_ci'] = point_and_ci_width(sm.get('system_pairing_rate', {}), default_estimate=None)
+
+    # business
+    r['orig'], r['orig_ci'] = point_and_ci_width(cm.get('featured_origin_rate', {}))
+
+    rows.append(r)
+
+rows.sort(key=lambda r: (r['ratio'], _ARM_ORDER.get(r['arm'], 99), r['p']))
+
+
+# ----- formatters -----
+def val(est, half, w=6, d=3):
+    if est is None:
+        return f"{'--':>{w}}"
+    if half is None:
+        return f"{est:{w}.{d}f}"
+    return f"{est:{w}.{d}f} ±{half:.{d}f}"
+
+
+def pct(est, half, d=1):
+    if est is None:
+        return f"{'--':>6}"
+    if half is None:
+        return f"{est*100:.{d}f}%"
+    return f"{est*100:.{d}f} ±{half*100:.{d}f}%"
+
+
+# ----- header -----
+H = (f"{'Ratio':>5} {'Policy':>9} {'p':>4} "
+     f"| {'Growth':>16} {'Backlog':>14} "
+     f"| {'Fulfil':>13} {'Assign':>13} {'Pickup':>13} {'Deliv':>13} "
+     f"| {'Pairing':>14} "
+     f"| {'F_origin':>14}")
+print(H)
+print("=" * len(H))
+
+prev_ratio = None
+for r in rows:
+    if prev_ratio is not None and r['ratio'] != prev_ratio:
+        print("-" * len(H))
+    prev_ratio = r['ratio']
+
+    cliff = "*" if (r['growth'] is not None and r['growth'] > 0) else " "
+
+    line = (
+        f"{r['ratio']:>5.1f} {_ARM_LABEL.get(r['arm'], r['arm']):>9} {r['p']:>4.1f} "
+        f"| {val(r['growth'], r['growth_ci'], 6, 4):>15}{cliff}"
+        f"{val(r['backlog'], r['backlog_ci'], 6, 2):>14} "
+        f"| {val(r['fulfil'], r['fulfil_ci'], 5, 2):>13}"
+        f" {val(r['assign'], r['assign_ci'], 5, 2):>13}"
+        f" {val(r['pickup'], r['pickup_ci'], 5, 2):>13}"
+        f" {val(r['deliv'], r['deliv_ci'], 5, 2):>13} "
+        f"| {pct(r['pair'], r['pair_ci']):>14} "
+        f"| {pct(r['orig'], r['orig_ci']):>14}"
+    )
+    print(line)
+
+print("=" * len(H))
+print("All values: point estimate ± 95% CI half-width.  '--' = not applicable.")
+print("* on Growth = point estimate > 0 (check CI: clears 0 => unbounded; straddles 0 => bounded).")
+print("REGIME: classify by Growth CI. In UNSTABLE cells, compare Growth ONLY --")
+print("        Backlog/Fulfil/Assign/etc. are run-length-biased there (descriptive, not comparative).")
+print("Customer exp: Fulfil = Assign + Pickup + Deliv (min). Attribution: featuring should inflate Deliv (R-C leg).")
+print("Mechanism: Pairing = consolidation-buyback probe (flat/falling across tau => no buyback).")
+print("Business: F_origin = arrivals routed to R10 (organic share at U/X''; rises with tau).")
 # %% CELL 17: Ad-hoc Analysis (Placeholder)
 """
 PLACEHOLDER FOR AD-HOC ANALYSIS
