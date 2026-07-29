@@ -334,8 +334,8 @@ target_arrival_interval_ratios = [7.0, 10.0, 12.0]
 #   tau is None where inapplicable (U, operational, featured).
 #   The label encodes tau so CELL 16 can parse the frontier position.
 CURATION_ARMS = [
-    ('U',      None,          None,        None),
-    ('tau0',   'operational', None,        None),
+    ('U',      None,          FEATURED_ID,        None),
+    ('tau0',   'operational', FEATURED_ID,        None),
     ('tau1',   'blended',     FEATURED_ID, 1.0),
     ('tau3',   'blended',     FEATURED_ID, 3.0),
     ('tau5',   'blended',     FEATURED_ID, 5.0),
