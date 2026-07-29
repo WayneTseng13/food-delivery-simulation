@@ -123,9 +123,8 @@ def calculate_all_curation_metrics(analysis_data):
     if featured_id is None:
         featured_origins = 0
     else:
-        featured_origins = sum(
-            1 for o in curated if o.origin_restaurant_id == featured_id
-        )
+        featured_origins = sum(1 for o in cohort_orders
+                           if o.origin_restaurant_id == featured_id)
  
     # ----- completion-side (new) -----
     # cohort_completed_orders: delivered orders that ARRIVED in the analysis
