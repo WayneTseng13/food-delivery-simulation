@@ -544,7 +544,7 @@ pipeline = ExperimentAnalysisPipeline(
     warmup_period=uniform_warmup_period,
     enabled_metric_types=['order_metrics', 'system_metrics',
                           'system_state_metrics', 'queue_dynamics_metrics',
-                          'curation_metrics', 'curation_tax_metrics'], 
+                          'curation_metrics'], 
     confidence_level=0.95
 )
 
