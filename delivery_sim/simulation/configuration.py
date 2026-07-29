@@ -90,14 +90,6 @@ class OperationalConfig:
                 f"curation_policy='blended' requires featured_tau >= 0.0 "
                 f"(or inf); got {featured_tau!r}."
             )
-        if curation_policy in (None, 'operational') and featured_restaurant_id is not None:
-            # Not fatal, but almost certainly a study-script mistake — a featured
-            # id set on a non-featuring row silently does nothing.
-            import warnings
-            warnings.warn(
-                f"featured_restaurant_id={featured_restaurant_id!r} is set but "
-                f"curation_policy={curation_policy!r} does not feature; it will be "
-                f"ignored.", stacklevel=2)
 
         # Customer compliance probability
         # Probability that a customer accepts the platform's restaurant recommendation
