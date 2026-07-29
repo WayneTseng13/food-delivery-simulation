@@ -429,7 +429,7 @@ print(f"{'='*50}")
 # %% CELL 10: Experiment Configuration
 experiment_config = ExperimentConfig(
     simulation_duration=1500,  # Same as Studies 3 & 4 for direct comparison
-    num_replications=5,
+    num_replications=10,
     operational_master_seed=42,
     collection_interval=1.0
 )
