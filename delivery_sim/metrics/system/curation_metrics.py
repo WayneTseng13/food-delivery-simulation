@@ -95,36 +95,36 @@ def calculate_all_curation_metrics(analysis_data):
         dict (all keys always present; 0.0 when undefined, e.g. U / operational).
     """
     cohort_orders = analysis_data.cohort_orders
-n_cohort = len(cohort_orders)
-featured_id = _featured_id(analysis_data)
+    n_cohort = len(cohort_orders)
+    featured_id = _featured_id(analysis_data)
 
-# Guard: empty cohort or no observation target -> metrics undefined.
-# NOTE: do NOT gate on curated-order count. Origin is a fact about where every
-# order landed, including U's uniform picks (which have curation_result=None).
-if n_cohort == 0 or featured_id is None:
+    # Guard: empty cohort or no observation target -> metrics undefined.
+    # NOTE: do NOT gate on curated-order count. Origin is a fact about where every
+    # order landed, including U's uniform picks (which have curation_result=None).
+    if n_cohort == 0 or featured_id is None:
+        return {
+            'featured_recommendation_rate': 0.0,
+            'featured_origin_rate':         0.0,
+            'featured_recommendations':     0,
+            'featured_origins':             0,
+            'total_cohort':                 n_cohort,
+        }
+
+    # Recommendation rate: curated-only numerator (a recommendation exists only when
+    # curated), denominated over cohort. 0 for U (no featured_ labels) — correct.
+    featured_recs = sum(
+        1 for o in cohort_orders
+        if o.curation_result is not None and o.curation_result.startswith('featured_')
+    )
+
+    # Origin: over ALL cohort orders. U's uniform picks count; this is the fix.
+    featured_origins = sum(1 for o in cohort_orders
+                        if o.origin_restaurant_id == featured_id)
+
     return {
-        'featured_recommendation_rate': 0.0,
-        'featured_origin_rate':         0.0,
-        'featured_recommendations':     0,
-        'featured_origins':             0,
+        'featured_recommendation_rate': featured_recs    / n_cohort,
+        'featured_origin_rate':         featured_origins / n_cohort,
+        'featured_recommendations':     featured_recs,
+        'featured_origins':             featured_origins,
         'total_cohort':                 n_cohort,
     }
-
-# Recommendation rate: curated-only numerator (a recommendation exists only when
-# curated), denominated over cohort. 0 for U (no featured_ labels) — correct.
-featured_recs = sum(
-    1 for o in cohort_orders
-    if o.curation_result is not None and o.curation_result.startswith('featured_')
-)
-
-# Origin: over ALL cohort orders. U's uniform picks count; this is the fix.
-featured_origins = sum(1 for o in cohort_orders
-                       if o.origin_restaurant_id == featured_id)
-
-return {
-    'featured_recommendation_rate': featured_recs    / n_cohort,
-    'featured_origin_rate':         featured_origins / n_cohort,
-    'featured_recommendations':     featured_recs,
-    'featured_origins':             featured_origins,
-    'total_cohort':                 n_cohort,
-}
