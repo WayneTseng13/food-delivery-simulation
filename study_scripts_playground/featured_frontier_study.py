@@ -653,14 +653,6 @@ for ax, ratio in zip(axes, plot_ratios):
                                     textcoords="offset points", xytext=(6, 6),
                                     fontsize=10, fontweight='bold', color=color)
 
-    # U reference marker (no-curation baseline; p-invariant, so plot once)
-    ux, uy, uye, _ = series(ratio, ps[0], {'U'})
-    if ux:
-        ax.errorbar(ux, uy, yerr=uye, marker='*', markersize=15,
-                    color='#616161', markeredgecolor='black', linestyle='none',
-                    capsize=3, zorder=4, label='U (no curation)')
-        ax.annotate('U', (ux[0], uy[0]), textcoords="offset points",
-                    xytext=(8, -2), fontsize=10, fontweight='bold', color='#616161')
 
     ax.set_title(f"Ratio {ratio:.0f}", fontsize=12)
     ax.set_xlabel("Business capture — F_origin (% of demand at R10)")
