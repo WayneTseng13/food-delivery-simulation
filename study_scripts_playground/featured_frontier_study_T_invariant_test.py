@@ -179,15 +179,13 @@ The design reads two ways from the SAME runs:
 FEATURED_ID = 'R10'
  
 compliance_probabilities = [0.5, 1.0]
-target_arrival_interval_ratios = [7.0, 10.0, 12.0]
+target_arrival_interval_ratios = [10.0]
  
 # Curation arm spec: (label, curation_policy, featured_id, tau)
 #   tau is None where inapplicable (U, operational, featured).
 #   The label encodes tau so CELL 16 can parse the frontier position.
 CURATION_ARMS = [
-    ('U',      None,          FEATURED_ID,        None),
     ('tau0',   'operational', FEATURED_ID,        None),
-    ('tau1',   'blended',     FEATURED_ID, 1.0),
     ('tau3',   'blended',     FEATURED_ID, 3.0),
     ('tau5',   'blended',     FEATURED_ID, 5.0),
     ('tauInf', 'featured',    FEATURED_ID, None),   # tau fixed to +inf internally
@@ -279,7 +277,7 @@ print(f"{'='*50}")
 
 # %% CELL 10: Experiment Configuration
 experiment_config = ExperimentConfig(
-    simulation_duration=1500,  # Same as Studies 3 & 4 for direct comparison
+    simulation_duration=2500,  # Same as Studies 3 & 4 for direct comparison
     num_replications=10,
     operational_master_seed=42,
     collection_interval=1.0
