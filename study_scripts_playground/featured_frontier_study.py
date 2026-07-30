@@ -57,119 +57,7 @@ print("RESEARCH QUESTION")
 print("="*80)
 
 research_question = """
-(1) How does the curation effect of Policy X and Policy X' scale as customer
-    compliance probability decreases from 1.0 to 0.0?
-(2) Is X' more or less robust to non-compliance than X — that is, does X' retain
-    more of its advantage at low p, or do both policies degrade similarly?
-(3) Under partial compliance, does the residual queue create conditions for X''s
-    pair_queued branch to fire meaningfully and exercise the "active push for
-    pair formation" mechanism that Study 4 could not observe under p=1?
-"""
 
-context = """
-Study 4 showed Policy X' produces a regime change under full compliance (p=1):
-at ratio 7.0 OFF, X' brings queue from 106 (under U or X-in-fallback) down to
-under 1, by triggering a reinforcement loop where short driver cycles maintain
-D > 0 which maintains short cycles.
-
-The result is contingent on customers always accepting the platform's
-recommendation. Under partial compliance, the platform's signal is partially
-ignored, and X's effectiveness should degrade. The shape and rate of that
-degradation is the central question.
-
-Compliance acts on the same axis curation does — demand-side coordination —
-but in the opposite direction: curation tries to steer customer choice, while
-non-compliance is the customer ignoring the steering. p indexes how much of
-the platform's curation signal actually reaches the system.
-
-A secondary expectation: under partial compliance, X's reinforcement loop may
-not fully form, leaving residual queue. That residual queue is exactly what
-X''s pair_queued branch needs to act on — so partial compliance may be the
-regime where the multi-branch design of X' actually exercises all its branches.
-Study 4 could not see this because the reinforcement loop emptied the queue.
-"""
-
-sub_questions = """
-1. Performance degradation curve (assignment time, queue size, growth rate)
-   - For each (ratio, pairing, curation) cell, sweep p ∈ {0.0, 0.5, 1.0}.
-   - Expected: monotonic degradation as p decreases. Magnitude and shape of the
-     curve characterises how much of the curation effect depends on compliance.
-   - Endpoint check: p=1.0 reproduces Study 4 results; p=0.0 with X should
-     resemble Policy U (recommendation produced but always ignored, customer
-     samples among remaining restaurants — very close to uniform).
-
-2. X vs X' separation under partial compliance
-   - At p=1.0 (Study 4), X' dominated X by orders of magnitude at high load.
-   - At p=0.5, does X' still dominate, or does the gap close? If the gap closes
-     proportionally, X's benefit was primarily from "joint R-D+R-C optimisation
-     under full compliance" rather than from the multi-branch architecture.
-     If X' is more robust than X (larger relative advantage at lower p), the
-     architecture itself adds value.
-
-3. Branch activation rates of X' under partial compliance
-   - Study 4 found single_immediate dominated (76-97% of arrivals) because the
-     reinforcement loop kept D > 0.
-   - Hypothesis: at p < 1, the loop weakens, queue accumulates, and pair_queued
-     and single_queued branches activate more often. Track how the branch mix
-     shifts with p — this is where the multi-branch design earns its keep.
-
-4. Pairing rate under partial compliance
-   - At p=1 with X', the queue emptied so quickly that pairing rate dropped
-     even with pairing ON.
-   - At p < 1, the residual queue should re-enable pair formation. Does X' raise
-     the pairing rate above what U or X would produce at the same p? If yes, the
-     pair_queued branch is doing real pair-construction work.
-"""
-
-scope = """
-- Single fixed infrastructure (seed=42), consistent with Studies 1-4.
-- Three ratios: 5.0 (critical), 6.0 (no-pairing boundary), 7.0 (high stress).
-- Four compliance levels spanning the parameter range:
-  - p=1.0: upper-bound reference (full compliance; reproduces Study 4 design points).
-  - p=0.5: realistic partial-compliance operating point.
-  - p=0.1 (= 1/N): neutral null — post-curation selection probability equals
-    the uniform baseline 1/N. At this point curation has no aggregate effect on
-    the order stream; the system should behave statistically identically to
-    Policy U (Study 4 reference) within Monte Carlo noise. Serves as both a
-    consistency check on the compliance machinery and the natural reference
-    point against which curation effects are measured.
-  - p=0.0: lower-bound worst-case (anti-recommendation regime; recommendation
-    always rejected, customer samples uniformly from non-recommended
-    restaurants). Not behaviorally realistic but informative as a worst-case
-    bound on the curation-compliance interaction.
-- Four curation policies: U,X,X'',X'
-- Baseline intensity only (order_interval=1.0).
-"""
-
-analysis_focus = """
-Primary: assignment time, queue size, and growth rate as functions of p, holding
-ratio, pairing, and curation policy fixed. The shape of this curve characterises
-compliance sensitivity.
-Secondary: branch activation rates for X' under partial compliance (do
-pair_queued and single_queued fire more often when the reinforcement loop
-breaks?); pairing rate under partial compliance (does X' construct pairs
-beyond what pairing alone produces when the queue is non-empty?).
-Tertiary: endpoint reproducibility checks — X at p=1.0 should match Study 3
-results within Monte Carlo noise; X' at p=1.0 should match Study 4.
-"""
-
-evolution_notes = """
-Study sequence positioning:
-
-Study 1: Arrival Interval Ratio Study (COMPLETE) — regime structure.
-Study 2: Pairing Effect Study (COMPLETE) — supply-side coordination mechanism.
-Study 3: R-D Curation Study (COMPLETE, p=1) — demand-side coordination mechanism
-         under upper-bound compliance.
-Study 4: State-Adaptive Curation Study (COMPLETE, p=1) — state-adaptive demand-
-         side coordination under upper-bound compliance. X' produced a regime
-         change but the result is contingent on p=1.
-
-Customer Compliance Study (THIS STUDY)
-- Relaxes the full-compliance assumption that was held fixed in Studies 3 and 4.
-- Treats p as an explicit experimental parameter.
-- Architecturally, this study is enabled by the customer-compliance machinery
-  added after Study 4: the curation policy produces a recommendation (or None),
-  and the customer-behaviour layer decides whether to accept it based on p.
 """
 
 print(research_question)
@@ -683,11 +571,9 @@ for r in rows:
         print("-" * len(H))
     prev_ratio = r['ratio']
 
-    cliff = "*" if (r['growth'] is not None and r['growth'] > 0) else " "
-
     line = (
         f"{r['ratio']:>5.1f} {_ARM_LABEL.get(r['arm'], r['arm']):>9} {r['p']:>4.1f} "
-        f"| {val(r['growth'], r['growth_ci'], 6, 4):>15}{cliff}"
+        f"| {val(r['growth'], r['growth_ci'], 6, 4):>15}"
         f"{val(r['backlog'], r['backlog_ci'], 6, 2):>14} "
         f"| {val(r['fulfil'], r['fulfil_ci'], 5, 2):>13}"
         f" {val(r['assign'], r['assign_ci'], 5, 2):>13}"
@@ -700,7 +586,6 @@ for r in rows:
 
 print("=" * len(H))
 print("All values: point estimate ± 95% CI half-width.  '--' = not applicable.")
-print("* on Growth = point estimate > 0 (check CI: clears 0 => unbounded; straddles 0 => bounded).")
 print("REGIME: classify by Growth CI. In UNSTABLE cells, compare Growth ONLY --")
 print("        Backlog/Fulfil/Assign/etc. are run-length-biased there (descriptive, not comparative).")
 print("Customer exp: Fulfil = Assign + Pickup + Deliv (min). Attribution: featuring should inflate Deliv (R-C leg).")
@@ -708,23 +593,13 @@ print("Mechanism: Pairing = consolidation-buyback probe (flat/falling across tau
 print("Business: F_origin = arrivals routed to R10 (organic share at U/X''; rises with tau).")
 # %% CELL 17: Frontier Plot — business capture vs operational cost
 # ==============================================================================
-# THE headline figure: the operational-business trade-off traced by tau.
-#
-#   x = F_origin (business capture: % of demand routed to R10)
-#   y = fulfillment time (operational cost)
-#   one point per curation arm, connected in tau order (X'' -> blend -> F),
-#   one PANEL per ratio, two lines per panel (p=0.5, p=1.0).
-#
-# Design choices for legibility:
-#   - Policy U is OMITTED. U is not a frontier point -- it is the no-curation
-#     reference, dominated on both axes (worse ops AND only organic capture). It
-#     floats far off the curve and stretches the y-axis. Note it in text instead.
-#   - One ratio per panel (not all ratios overlaid) so lines don't tangle.
-#   - CI shown as a light shaded band, not error bars, to keep the trend readable.
-#   - Ratio 12 omitted: unbounded regime, fulfillment is run-length-biased there;
-#     the frontier is a steady-state object. (Regime plot handles ratio 12.)
-#
-# Reads the `rows` list from CELL 16 (run CELL 16 first).
+# The operational-business trade-off traced by tau.
+#   x = F_origin (% of demand at R10);  y = fulfillment time (min)
+#   frontier line = X'' -> tau1 -> tau3 -> tau5 -> F, in tau order, per (ratio,p).
+#   U shown as a separate REFERENCE MARKER (no-curation baseline; not a tau point).
+#   CI shown as a light shaded band (not error bars) for visual calm.
+#   One panel per ratio; ratio 12 omitted (unbounded -> fulfillment run-length-biased).
+# Reads `rows` from CELL 16.
 # ==============================================================================
 
 import matplotlib.pyplot as plt
@@ -735,21 +610,20 @@ STABLE_RATIOS = [7.0, 10.0]
 FEATURED_ID = 'R10'
 YCOL, YCI, YLABEL = 'fulfil', 'fulfil_ci', 'Fulfillment time (min)'
 
-# Frontier arms only (U dropped); tau order.
-_ARM_ORDER = {'tau0': 0, 'tau1': 1, 'tau3': 2, 'tau5': 3, 'tauInf': 4}
+_ARM_ORDER = {'tau0': 0, 'tau1': 1, 'tau3': 2, 'tau5': 3, 'tauInf': 4}   # frontier arms
 _ARM_LABEL = {'tau0': "X''", 'tau1': 'τ1', 'tau3': 'τ3', 'tau5': 'τ5', 'tauInf': 'F'}
 
-_pcolor = {0.5: '#1565C0', 1.0: '#2E7D32'}   # p distinguished by color now
+_pcolor = {0.5: '#1565C0', 1.0: '#2E7D32'}
 _pstyle = {0.5: '--', 1.0: '-'}
 
 plot_ratios = [r for r in sorted(set(r['ratio'] for r in rows)) if r in STABLE_RATIOS]
 ps = sorted(set(r['p'] for r in rows))
 
 
-def frontier_series(ratio, p):
+def series(ratio, p, arms_filter):
     block = [r for r in rows
-             if r['ratio'] == ratio and r['p'] == p and r['arm'] in _ARM_ORDER]
-    block.sort(key=lambda r: _ARM_ORDER[r['arm']])
+             if r['ratio'] == ratio and r['p'] == p and r['arm'] in arms_filter]
+    block.sort(key=lambda r: _ARM_ORDER.get(r['arm'], 99))
     xs = [r['orig'] * 100 for r in block]
     ys = [r[YCOL] for r in block]
     ye = [(r[YCI] or 0) for r in block]
@@ -757,50 +631,54 @@ def frontier_series(ratio, p):
     return xs, ys, ye, arms
 
 
-fig, axes = plt.subplots(1, len(plot_ratios), figsize=(6.2 * len(plot_ratios), 5),
-                         sharey=False)
+fig, axes = plt.subplots(1, len(plot_ratios), figsize=(6.4 * len(plot_ratios), 5))
 if len(plot_ratios) == 1:
     axes = [axes]
 
 for ax, ratio in zip(axes, plot_ratios):
     for p in ps:
-        xs, ys, ye, arms = frontier_series(ratio, p)
-        if not xs or any(v is None for v in xs + ys):
-            continue
-        color = _pcolor[p]
+        # frontier line (X''..F)
+        xs, ys, ye, arms = series(ratio, p, _ARM_ORDER)
+        if xs and not any(v is None for v in xs + ys):
+            color = _pcolor[p]
+            ax.fill_between(xs, [y - e for y, e in zip(ys, ye)],
+                            [y + e for y, e in zip(ys, ye)],
+                            color=color, alpha=0.12, zorder=1)
+            ax.plot(xs, ys, color=color, linestyle=_pstyle[p], marker='o',
+                    markersize=6, linewidth=2, label=f"p = {p:.1f}", zorder=3)
+            if p == 1.0:
+                for x, y, arm in zip(xs, ys, arms):
+                    if arm in ('tau0', 'tauInf'):
+                        ax.annotate(_ARM_LABEL[arm], (x, y),
+                                    textcoords="offset points", xytext=(6, 6),
+                                    fontsize=10, fontweight='bold', color=color)
 
-        # CI as a light shaded band around the line
-        ylo = [y - e for y, e in zip(ys, ye)]
-        yhi = [y + e for y, e in zip(ys, ye)]
-        ax.fill_between(xs, ylo, yhi, color=color, alpha=0.12, zorder=1)
-
-        ax.plot(xs, ys, color=color, linestyle=_pstyle[p], marker='o',
-                markersize=6, linewidth=2, label=f"p = {p:.1f}", zorder=3)
-
-        # label the poles (X'' and F) once, on the p=1.0 line only
-        if p == 1.0:
-            for x, y, arm in zip(xs, ys, arms):
-                if arm in ('tau0', 'tauInf'):
-                    ax.annotate(_ARM_LABEL[arm], (x, y),
-                                textcoords="offset points", xytext=(6, 6),
-                                fontsize=10, fontweight='bold', color=color)
+    # U reference marker (no-curation baseline; p-invariant, so plot once)
+    ux, uy, uye, _ = series(ratio, ps[0], {'U'})
+    if ux:
+        ax.errorbar(ux, uy, yerr=uye, marker='*', markersize=15,
+                    color='#616161', markeredgecolor='black', linestyle='none',
+                    capsize=3, zorder=4, label='U (no curation)')
+        ax.annotate('U', (ux[0], uy[0]), textcoords="offset points",
+                    xytext=(8, -2), fontsize=10, fontweight='bold', color='#616161')
 
     ax.set_title(f"Ratio {ratio:.0f}", fontsize=12)
     ax.set_xlabel("Business capture — F_origin (% of demand at R10)")
     ax.set_ylabel(YLABEL)
     ax.grid(True, alpha=0.25)
-    ax.legend(fontsize=10, title="compliance", framealpha=0.9)
+    ax.legend(fontsize=9, framealpha=0.9)
     ax.set_xlim(left=0)
 
 fig.suptitle(
     f"Operational–business frontier traced by τ   (featured = {FEATURED_ID})\n"
-    f"each point = one policy (X'' → τ1 → τ3 → τ5 → F);  U omitted (dominated)",
+    f"frontier = X'' → τ1 → τ3 → τ5 → F;  ★ = U (no-curation reference)",
     fontsize=12)
 fig.tight_layout(rect=[0, 0, 1, 0.92])
+plt.show()
 
-
-print("\nReading it: left->right along a line = raising τ (X''→F), buying capture")
-print("with operational cost. Convex (flat then steep) = capture is cheap near the")
-print("operational pole and expensive near F → feature lightly.")
+print("Reading it: along a line, left→right raises τ (X''→F), buying capture at")
+print("operational cost. Convex = capture cheap near X'', expensive near F. U (★)")
+print("sits off the frontier — same organic capture as X'' but far worse fulfillment,")
+print("showing curation's operational value independent of featuring.")
 
 # %%
