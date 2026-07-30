@@ -179,7 +179,7 @@ The design reads two ways from the SAME runs:
 FEATURED_ID = 'R10'
  
 compliance_probabilities = [0.5, 1.0]
-target_arrival_interval_ratios = [10.0]
+target_arrival_interval_ratios = [7.0]
  
 # Curation arm spec: (label, curation_policy, featured_id, tau)
 #   tau is None where inapplicable (U, operational, featured).
@@ -624,7 +624,7 @@ for ax, ratio in zip(axes, plot_ratios):
 
 fig.suptitle(
     f"Operational–business frontier traced by τ   (featured = {FEATURED_ID})\n"
-    f"frontier = X'' → τ1 → τ3 → τ5 → F;  ★ = U (no-curation reference)",
+    f"frontier = X'' → τ1 → τ3 → τ5 → F",
     fontsize=12)
 fig.tight_layout(rect=[0, 0, 1, 0.92])
 plt.show()
