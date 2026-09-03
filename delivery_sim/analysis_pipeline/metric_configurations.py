@@ -225,29 +225,12 @@ METRIC_CONFIGURATIONS = {
         'data_key': None,
         'ci_config': [
             {
-                'metric_name': 'featured_recommendation_rate',
-                'target_statistic': 'mean',
-                'construct_ci': True
-            },
-            {
                 'metric_name': 'featured_origin_rate',
                 'target_statistic': 'mean',
                 'construct_ci': True
             },
-            {'metric_name': 'featured_throughput',
-             'target_statistic': 'mean',
-             'construct_ci': True
-            },
-            {'metric_name': 'featured_completion_rate',
-             'target_statistic': 'mean',
-             'construct_ci': True
-            },
-            {'metric_name': 'featured_delivered_share',
-             'target_statistic': 'mean',
-             'construct_ci': True
-            },
         ],
-        'description': 'Featuring decision rate (offered) and origin/capture rate (realized) for blended/featured curation'
+        'description': 'Realized business capture at R_F (origin rate); the U vs F gap is the featuring lift'
     }
 
 }

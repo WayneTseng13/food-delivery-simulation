@@ -32,7 +32,7 @@ from delivery_sim.system_data.system_data_collector import SystemDataCollector
 from delivery_sim.system_data.system_snapshot_repository import SystemSnapshotRepository
 from delivery_sim.utils.priority_scoring import PriorityScorer
 from delivery_sim.event_collectors.collector_registry import EventCollectorRegistry
-from delivery_sim.utils.curation_policy import BlendedCurationPolicy
+from delivery_sim.utils.curation_policy import CurationPolicy
 
 class SimulationRunner:
     """
@@ -213,20 +213,19 @@ class SimulationRunner:
         self.logger.debug("Creating services...")
 
         # Create curation policy based on operational config.
-        # None means no curation — order_arrival_service handles uniform
-        # restaurant sampling itself. The three non-None modes all map to the
-        # single BlendedCurationPolicy, which reads config.curation_policy as its
-        # mode ('operational' | 'blended' | 'featured').
+        # None means no curation — order_arrival_service handles baseline
+        # restaurant selection itself. The two non-None modes both map to the
+        # single CurationPolicy, which reads config.curation_policy as its
+        # mode ('operational' | 'featured').
         if self.config.curation_policy is None:
             curation_policy = None
 
-        elif self.config.curation_policy in ('operational', 'blended', 'featured'):
-            curation_policy = BlendedCurationPolicy(
+        elif self.config.curation_policy in ('operational', 'featured'):
+            curation_policy = CurationPolicy(
                 restaurant_repository=self.restaurant_repository,
                 driver_repository=self.driver_repository,
                 config=self.config,
                 featured_restaurant_id=self.config.featured_restaurant_id,
-                tau=self.config.featured_tau,
             )
 
         else:
