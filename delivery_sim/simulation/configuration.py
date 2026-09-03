@@ -44,7 +44,6 @@ class OperationalConfig:
                  # Curation policy
                  curation_policy=None,        # None | 'operational' | 'blended' | 'featured'
                  featured_restaurant_id=None, # required for 'blended'/'featured'
-                 featured_tau=None,           # required for 'blended' (km, >=0); ignored otherwise
                  customer_compliance_probability=1.0):
 
         # Arrival process parameters
@@ -64,11 +63,10 @@ class OperationalConfig:
 
         # Curation policy.
         # Valid values:
-        #   None            — no curation (Policy U); customer samples uniformly
+        #   None            — no curation (Policy U); customer selects unaided
         #   'operational'   — Policy X'' (single_immediate + single_queued)
-        #   'blended'       — Blend(tau) over one featured restaurant
-        #   'featured'      — Policy F (always feature; tau = +inf)
-        valid_policies = {None, 'operational', 'blended', 'featured'}
+        #   'featured'      — Policy F (always feature R_F)
+        valid_policies = {None, 'operational', 'featured'}
         if curation_policy not in valid_policies:
             raise ValueError(
                 f"Invalid curation_policy: {curation_policy!r}. "
@@ -76,19 +74,13 @@ class OperationalConfig:
             )
         self.curation_policy = curation_policy
         self.featured_restaurant_id = featured_restaurant_id
-        self.featured_tau = featured_tau
 
-        # Featuring modes require a featured restaurant; 'blended' also needs tau.
+        # Featured mode requires a featured restaurant.
         # (The policy class re-validates, but failing here gives a clearer error
         # at config-construction time, before a run starts.)
-        if curation_policy in ('blended', 'featured') and featured_restaurant_id is None:
+        if curation_policy == 'featured' and featured_restaurant_id is None:
             raise ValueError(
                 f"curation_policy={curation_policy!r} requires featured_restaurant_id."
-            )
-        if curation_policy == 'blended' and (featured_tau is None or featured_tau < 0.0):
-            raise ValueError(
-                f"curation_policy='blended' requires featured_tau >= 0.0 "
-                f"(or inf); got {featured_tau!r}."
             )
 
         # Customer compliance probability
@@ -113,7 +105,6 @@ class OperationalConfig:
                 f"service_duration={self.mean_service_duration}±{self.service_duration_std_dev}min, "
                 f"curation={self.curation_policy}, "
                 f"featured={self.featured_restaurant_id}, "
-                f"tau={self.featured_tau}, "
                 f"compliance_p={self.customer_compliance_probability})")
 
 class ExperimentConfig:
