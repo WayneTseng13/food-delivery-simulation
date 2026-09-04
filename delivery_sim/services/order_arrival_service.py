@@ -2,6 +2,7 @@ from delivery_sim.entities.order import Order
 from delivery_sim.events.order_events import OrderCreatedEvent
 from delivery_sim.utils.logging_system import get_logger
 from delivery_sim.utils.location_utils import format_location
+from delivery_sim.utils.customer_choice_model import CustomerChoiceModel
 
 
 class OrderArrivalService:
@@ -11,12 +12,20 @@ class OrderArrivalService:
     This service runs as a continuous SimPy process, creating new orders
     based on configured inter-arrival times and dispatching events when
     orders are created.
+
+    Restaurant selection is delegated to a CustomerChoiceModel: every arrival,
+    the customer picks a restaurant by softmax over -beta*distance (+ boost b on
+    the one restaurant the curation policy slotted, if any). This one draw
+    replaces both the old uniform pick (Policy U) and the old
+    compliance-coin-plus-uniform-fallback (curated). There is no exogenous
+    compliance probability; compliance is endogenous -- the realized chance the
+    customer lands on the slotted restaurant.
     """
 
     def __init__(self, env, event_dispatcher, order_repository,
-                    restaurant_repository, driver_repository,config, id_generator,
+                    restaurant_repository, driver_repository, config, id_generator,
                     operational_rng_manager, curation_policy=None):
-            
+
             """Initialize the order arrival service."""
             self.logger = get_logger("services.order_arrival")
 
@@ -25,28 +34,36 @@ class OrderArrivalService:
             self.event_dispatcher = event_dispatcher
             self.order_repository = order_repository
             self.restaurant_repository = restaurant_repository
-            self.driver_repository = driver_repository 
+            self.driver_repository = driver_repository
             self.config = config
             self.id_generator = id_generator
 
-            # Get all random streams at initialization time
+            # Get all random streams at initialization time. The customer's
+            # restaurant choice is drawn on restaurant_selection; there is no
+            # separate compliance stream anymore (the choice is one softmax draw).
             self.arrival_stream = operational_rng_manager.get_stream('order_arrivals')
             self.location_stream = operational_rng_manager.get_stream('customer_locations')
             self.restaurant_selection_stream = operational_rng_manager.get_stream('restaurant_selection')
-            self.compliance_stream = operational_rng_manager.get_stream('customer_compliance')   # NEW
 
-            # Curation policy (may be None — meaning no curation is active and the
-            # customer samples a restaurant uniformly at random).
+            # Curation policy (may be None — Policy U, no restaurant is slotted and
+            # the customer chooses by distance alone).
             self.curation_policy = curation_policy
 
-            # Customer compliance probability. Inert when curation_policy is None.
-            self.compliance_probability = config.customer_compliance_probability
+            # Customer choice model. beta = proximity sensitivity, b = boost applied
+            # to the slotted restaurant. The model draws on restaurant_selection.
+            self.choice_model = CustomerChoiceModel(
+                beta=config.customer_distance_sensitivity,
+                b=config.recommendation_boost,
+                selection_stream=self.restaurant_selection_stream,
+            )
 
-            if self.curation_policy is None and self.compliance_probability != 1.0:
+            # Under Policy U nothing is ever slotted, so the boost is inert whatever
+            # its value. Warn if a nonzero boost is configured but can never apply.
+            if self.curation_policy is None and config.recommendation_boost != 0.0:
                 self.logger.warning(
-                    f"customer_compliance_probability={self.compliance_probability} "
-                    f"is set but curation_policy is None — parameter has no effect "
-                    f"(no recommendation is produced for the customer to comply with)."
+                    f"recommendation_boost={config.recommendation_boost} is set but "
+                    f"curation_policy is None — the boost has no effect (no "
+                    f"restaurant is slotted for the customer to be steered toward)."
                 )
 
             policy_name = (
@@ -58,7 +75,8 @@ class OrderArrivalService:
                 f"[t={self.env.now:.2f}] OrderArrivalService initialized "
                 f"with mean inter-arrival time: {config.mean_order_inter_arrival_time} minutes, "
                 f"curation policy: {policy_name}, "
-                f"compliance probability: {self.compliance_probability}"
+                f"distance sensitivity beta={config.customer_distance_sensitivity}, "
+                f"recommendation boost b={config.recommendation_boost}"
             )
 
             self.logger.info(f"[t={self.env.now:.2f}] Starting order arrival process")
@@ -77,6 +95,7 @@ class OrderArrivalService:
 
             order_id = self.id_generator.next()
             customer_location = self._generate_customer_location()
+
             # Read arrival-state BEFORE any recommendation, for every policy
             # (including U). This is the honest "was an idle driver present?"
             # read the curation policy also uses internally, but stamped here so
@@ -102,8 +121,8 @@ class OrderArrivalService:
                         curation_result=curation_result,
                         customer_complied=customer_complied,
                         featuring_penalty=featuring_penalty,
-                        arrival_state=arrival_state,                  # NEW
-                        origin_restaurant_id=origin_restaurant_id,    # NEW
+                        arrival_state=arrival_state,
+                        origin_restaurant_id=origin_restaurant_id,
                     )
 
             self.order_repository.add(new_order)
@@ -131,76 +150,73 @@ class OrderArrivalService:
 
     def _select_restaurant_location(self, customer_location):
         """
-        Determine the restaurant a customer ends up ordering from, given the active
-        curation policy and the customer's compliance behavior.
-    
-        Flow:
-        - Policy U (curation_policy is None): no recommendation. The customer
-            samples uniformly over ALL restaurants on restaurant_selection_stream.
-            compliance is not applicable (None).
-        - Any curation policy: a recommendation is ALWAYS produced. Apply the
-            compliance gate on compliance_stream. On acceptance the customer takes
-            the recommendation; on rejection the customer samples uniformly over the
-            remaining restaurants on restaurant_selection_stream.
-    
+        Determine the restaurant a customer ends up ordering from, under the
+        customer choice model and the active curation policy.
+
+        Flow (one softmax draw for every policy):
+        - Policy U (curation_policy is None): nothing is slotted (boost_id=None).
+            The customer chooses by -beta*distance alone. curation_result and
+            featuring_penalty are None; compliance is not applicable.
+        - Any curation policy: the policy names the restaurant to slot (boost_id).
+            The customer chooses by -beta*distance + b on the slotted restaurant.
+            customer_complied records whether the draw landed on the slot -- this
+            is the endogenous, distance-dependent compliance that replaced the old
+            constant p.
+
         Returns:
-            tuple: (location, curation_result, customer_complied, featuring_penalty)
+            tuple: (location, curation_result, customer_complied,
+                    featuring_penalty, origin_restaurant_id)
                 curation_result:
                     None                          -- Policy U (no curation)
                     'operational_immediate' /
-                    'operational_queued'          -- R_op recommended
+                    'operational_queued'          -- R_op slotted
                     'featured_immediate' /
-                    'featured_queued'             -- R_F recommended
+                    'featured_queued'             -- R_F slotted
                 customer_complied:
-                    None   -- no recommendation (U)
-                    True   -- recommendation accepted
-                    False  -- recommendation rejected
+                    None   -- no restaurant slotted (U)
+                    True   -- the customer's choice landed on the slotted restaurant
+                    False  -- the customer chose a different restaurant
                 featuring_penalty:
                     None   -- U, or operational mode (no featuring decision)
-                    float  -- featuring penalty (>= 0), whether or not it fired
+                    float  -- featuring penalty (>= 0), stamped whether or not the
+                              customer took R_F
+                origin_restaurant_id:
+                    the restaurant the customer actually ordered from.
         """
-        # Policy U: no recommendation, no compliance concept.
-        if self.curation_policy is None:
-            restaurants = self.restaurant_repository.find_all()
-            selected = self.restaurant_selection_stream.choice(restaurants)
-            self.logger.debug(
-                f"[t={self.env.now:.2f}] No curation (U); customer chose "
-                f"restaurant {selected.restaurant_id} uniformly")
-            return selected.location, None, None, None, selected.restaurant_id
-    
-        # A curation policy is active: it ALWAYS produces a recommendation.
-        recommendation, curation_result, featuring_penalty = \
-            self.curation_policy.select(customer_location)
-    
-        assert recommendation is not None, (
-            f"{type(self.curation_policy).__name__} returned no recommendation. "
-            f"Every curation policy in this module must always recommend; the "
-            f"no-recommendation path belongs to Policy U (curation_policy is None).")
-    
-        # Compliance gate.
-        u = self.compliance_stream.uniform(0.0, 1.0)
-        if u < self.compliance_probability:
-            self.logger.debug(
-                f"[t={self.env.now:.2f}] Recommendation accepted; "
-                f"restaurant {recommendation.restaurant_id} "
-                f"(curation_result={curation_result})")
-            return (recommendation.location, curation_result, True,
-                featuring_penalty, recommendation.restaurant_id)
-    
-        # Rejection: sample uniformly from the other restaurants. With N=10 the
-        # single-restaurant pathological case cannot occur, so no forced-comply guard.
         restaurants = self.restaurant_repository.find_all()
-        others = [r for r in restaurants
-                if r.restaurant_id != recommendation.restaurant_id]
-        selected = self.restaurant_selection_stream.choice(others)
+
+        # Decide which restaurant, if any, carries the boost.
+        if self.curation_policy is None:
+            boost_id = None
+            curation_result = None
+            featuring_penalty = None
+        else:
+            recommendation, curation_result, featuring_penalty = \
+                self.curation_policy.select(customer_location)
+            assert recommendation is not None, (
+                f"{type(self.curation_policy).__name__} returned no recommendation. "
+                f"Every curation policy in this module must always slot a "
+                f"restaurant; the no-slot path belongs to Policy U "
+                f"(curation_policy is None).")
+            boost_id = recommendation.restaurant_id
+
+        # One softmax draw resolves the customer's choice for every policy.
+        selected = self.choice_model.select(customer_location, restaurants, boost_id)
+
+        # Endogenous compliance: did the customer land on the slotted restaurant?
+        if boost_id is None:
+            customer_complied = None
+        else:
+            customer_complied = (selected.restaurant_id == boost_id)
+
         self.logger.debug(
-            f"[t={self.env.now:.2f}] Recommendation rejected; customer chose "
-            f"restaurant {selected.restaurant_id} uniformly from {len(others)} "
-            f"(recommendation was {recommendation.restaurant_id}, "
+            f"[t={self.env.now:.2f}] Customer chose restaurant "
+            f"{selected.restaurant_id} "
+            f"(slotted={boost_id}, complied={customer_complied}, "
             f"curation_result={curation_result})")
-        return (selected.location, curation_result, False,
+
+        return (selected.location, curation_result, customer_complied,
             featuring_penalty, selected.restaurant_id)
- 
 
     def _generate_customer_location(self):
         """Generate a customer location for a new order."""
