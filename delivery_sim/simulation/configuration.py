@@ -42,9 +42,10 @@ class OperationalConfig:
                  max_service_duration,             # minutes
 
                  # Curation policy
-                 curation_policy=None,        # None | 'operational' | 'blended' | 'featured'
-                 featured_restaurant_id=None, # required for 'blended'/'featured'
-                 customer_compliance_probability=1.0):
+                 curation_policy=None,        # None | 'operational' | 'featured'
+                 featured_restaurant_id=None, # required for 'featured'
+                 customer_distance_sensitivity=0.0,   # beta (1/km), >= 0
+                 recommendation_boost=0.0):           # b, >= 0
 
         # Arrival process parameters
         self.mean_order_inter_arrival_time = mean_order_inter_arrival_time
@@ -83,17 +84,21 @@ class OperationalConfig:
                 f"curation_policy={curation_policy!r} requires featured_restaurant_id."
             )
 
-        # Customer compliance probability
-        # Probability that a customer accepts the platform's restaurant recommendation
-        # when one is produced. Only meaningful when curation_policy is not None.
-        # Under curation_policy=None, this parameter is inert (no recommendation is
-        # produced, so the customer samples uniformly regardless of p).
-        if not (0.0 <= customer_compliance_probability <= 1.0):
+        # Customer choice-model parameters (replacing the retired exogenous
+        # compliance probability). beta = proximity sensitivity (1/km); b = boost
+        # the slotted restaurant receives. Both >= 0. Compliance is now endogenous
+        # -- an output of the softmax -- so there is no exogenous p.
+        if customer_distance_sensitivity < 0.0:
             raise ValueError(
-                f"customer_compliance_probability must be in [0.0, 1.0], "
-                f"got {customer_compliance_probability}."
+                f"customer_distance_sensitivity (beta) must be >= 0, "
+                f"got {customer_distance_sensitivity}."
             )
-        self.customer_compliance_probability = customer_compliance_probability
+        if recommendation_boost < 0.0:
+            raise ValueError(
+                f"recommendation_boost (b) must be >= 0, got {recommendation_boost}."
+            )
+        self.customer_distance_sensitivity = customer_distance_sensitivity
+        self.recommendation_boost = recommendation_boost
 
     def __str__(self):
         return (f"OperationalConfig("
@@ -105,7 +110,8 @@ class OperationalConfig:
                 f"service_duration={self.mean_service_duration}±{self.service_duration_std_dev}min, "
                 f"curation={self.curation_policy}, "
                 f"featured={self.featured_restaurant_id}, "
-                f"compliance_p={self.customer_compliance_probability})")
+                f"beta={self.customer_distance_sensitivity}, "
+                f"b={self.recommendation_boost})")
 
 class ExperimentConfig:
     def __init__(self, simulation_duration, num_replications, operational_master_seed, 
