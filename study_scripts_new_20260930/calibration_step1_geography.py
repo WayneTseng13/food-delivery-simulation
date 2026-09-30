@@ -16,7 +16,20 @@ Terms used below
   gap                   : a customer's second-nearest distance minus nearest distance
 """
 
+# %%
+%load_ext autoreload 
+%autoreload 2
+
 # %% 0. Imports and constants
+import sys
+import os
+# This file lives in <repo root>/study_scripts_new_20260930/, while the package
+# delivery_sim/ lives in <repo root>/. Python only finds packages in folders on
+# sys.path, so add the repo root: two dirname() steps up from this file.
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 import numpy as np
 import matplotlib.pyplot as plt
 
