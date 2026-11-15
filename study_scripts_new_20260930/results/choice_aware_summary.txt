@@ -1,0 +1,86 @@
+Q1: O-aware vs O-greedy (paired diff = aware - greedy, mean ± 95% CI half-width, 20 reps)
+ beta ratio | U fulfil  greedy   aware |       d_fulfil       d_assign       d_pickup       d_leg_km |   imm agree_imm
+----------------------------------------------------------------------------------------------------------------------
+  25%     7 |    20.15   18.14   18.09 |   -0.052±0.205   -0.019±0.151   +0.034±0.087   -0.032±0.009 |  0.42      0.81
+  40%     7 |    15.61   13.77   13.85 |   +0.083±0.134   +0.048±0.069   +0.089±0.077   -0.031±0.007 |  0.58      0.83
+  55%     7 |    12.65   11.71   11.62 |   -0.089±0.154   -0.028±0.062   -0.002±0.110   -0.027±0.004 |  0.68      0.84
+  70%     7 |    10.99   10.49   10.46 |   -0.030±0.106   -0.002±0.031   -0.013±0.086   -0.009±0.003 |  0.73      0.86
+  85%     7 |    10.15   10.02    9.95 |   -0.068±0.083   -0.019±0.034   -0.045±0.061   -0.001±0.001 |  0.75      0.85
+----------------------------------------------------------------------------------------------------------------------
+  25%    10 |    32.72   29.14   29.17 |   +0.035±0.245   +0.071±0.224   +0.015±0.062   -0.008±0.004 |  0.07      0.77
+  40%    10 |    23.77   21.14   20.88 |   -0.264±0.255   -0.146±0.186   -0.097±0.112   -0.010±0.006 |  0.17      0.77
+  55%    10 |    18.90   17.24   17.34 |   +0.093±0.199   +0.067±0.128   +0.058±0.097   -0.013±0.004 |  0.25      0.79
+  70%    10 |    16.01   15.33   15.28 |   -0.046±0.150   -0.002±0.091   -0.025±0.090   -0.006±0.002 |  0.32      0.80
+  85%    10 |    14.70   14.58   14.49 |   -0.090±0.135   -0.046±0.089   -0.048±0.068   -0.001±0.000 |  0.34      0.79
+----------------------------------------------------------------------------------------------------------------------
+
+Q1b: O-greedy vs U (paired diff = greedy - U)
+  25%     7 | d_fulfil  -2.007±0.306  d_assign  -0.783±0.257  d_leg  -0.381±0.027
+  40%     7 | d_fulfil  -1.838±0.233  d_assign  -0.619±0.163  d_leg  -0.293±0.021
+  55%     7 | d_fulfil  -0.936±0.198  d_assign  -0.255±0.128  d_leg  -0.152±0.009
+  70%     7 | d_fulfil  -0.494±0.113  d_assign  -0.114±0.058  d_leg  -0.064±0.006
+  85%     7 | d_fulfil  -0.125±0.106  d_assign  -0.017±0.032  d_leg  -0.008±0.001
+  25%    10 | d_fulfil  -3.586±0.634  d_assign  -2.763±0.699  d_leg  -0.420±0.027
+  40%    10 | d_fulfil  -2.624±0.468  d_assign  -1.846±0.467  d_leg  -0.329±0.018
+  55%    10 | d_fulfil  -1.655±0.342  d_assign  -1.003±0.320  d_leg  -0.180±0.009
+  70%    10 | d_fulfil  -0.684±0.232  d_assign  -0.343±0.169  d_leg  -0.078±0.006
+  85%    10 | d_fulfil  -0.116±0.155  d_assign  -0.045±0.097  d_leg  -0.013±0.002
+
+Q2: promotion frontier, R_F = R10
+  incr = R_F share minus paired U share (pp of all orders); d_fulfil = vs paired U (min)
+  beta 40%, ratio 7: U R_F share 11.8%, U fulfil 15.61
+     Blend-aware lam= 0.0: slot R_F   0.0%  incr +0.33±0.28pp  d_fulfil -1.756±0.208  d_leg -0.324
+     Blend-aware lam= 0.5: slot R_F  16.4%  incr +0.81±0.27pp  d_fulfil -1.812±0.210  d_leg -0.319
+     Blend-aware lam= 1.0: slot R_F  19.5%  incr +1.38±0.26pp  d_fulfil -1.778±0.181  d_leg -0.315
+     Blend-aware lam= 2.0: slot R_F  25.8%  incr +2.41±0.30pp  d_fulfil -1.712±0.203  d_leg -0.295
+     Blend-aware lam= 4.0: slot R_F  39.7%  incr +4.18±0.42pp  d_fulfil -1.574±0.212  d_leg -0.253
+     Blend-aware lam= 8.0: slot R_F  65.4%  incr +6.56±0.48pp  d_fulfil -0.901±0.208  d_leg -0.138
+    Blend-greedy lam= 0.0: slot R_F   0.0%  incr +0.27±0.27pp  d_fulfil -1.838±0.233  d_leg -0.293
+    Blend-greedy lam= 0.5: slot R_F  18.7%  incr +1.12±0.23pp  d_fulfil -1.783±0.168  d_leg -0.283
+    Blend-greedy lam= 1.0: slot R_F  23.8%  incr +1.93±0.27pp  d_fulfil -1.727±0.189  d_leg -0.280
+    Blend-greedy lam= 2.0: slot R_F  36.6%  incr +3.59±0.35pp  d_fulfil -1.489±0.207  d_leg -0.240
+    Blend-greedy lam= 4.0: slot R_F  68.4%  incr +6.59±0.44pp  d_fulfil -0.797±0.198  d_leg -0.112
+    Blend-greedy lam= 8.0: slot R_F  98.6%  incr +8.05±0.47pp  d_fulfil -0.139±0.163  d_leg +0.015
+               F          slot R_F 100.0%  incr +8.08±0.47pp  d_fulfil -0.042±0.174  d_leg +0.022
+  beta 40%, ratio 10: U R_F share 11.8%, U fulfil 23.77
+     Blend-aware lam= 0.0: slot R_F   0.0%  incr +0.32±0.30pp  d_fulfil -2.887±0.482  d_leg -0.339
+     Blend-aware lam= 0.5: slot R_F  16.0%  incr +0.81±0.26pp  d_fulfil -2.800±0.636  d_leg -0.340
+     Blend-aware lam= 1.0: slot R_F  19.0%  incr +1.37±0.29pp  d_fulfil -2.768±0.612  d_leg -0.335
+     Blend-aware lam= 2.0: slot R_F  25.2%  incr +2.32±0.30pp  d_fulfil -2.597±0.490  d_leg -0.321
+     Blend-aware lam= 4.0: slot R_F  40.1%  incr +4.24±0.41pp  d_fulfil -2.217±0.443  d_leg -0.268
+     Blend-aware lam= 8.0: slot R_F  67.0%  incr +6.74±0.49pp  d_fulfil -0.995±0.287  d_leg -0.132
+    Blend-greedy lam= 0.0: slot R_F   0.0%  incr +0.27±0.32pp  d_fulfil -2.624±0.468  d_leg -0.329
+    Blend-greedy lam= 0.5: slot R_F  17.8%  incr +1.08±0.28pp  d_fulfil -2.641±0.534  d_leg -0.325
+    Blend-greedy lam= 1.0: slot R_F  22.6%  incr +1.91±0.28pp  d_fulfil -2.681±0.584  d_leg -0.318
+    Blend-greedy lam= 2.0: slot R_F  35.5%  incr +3.65±0.40pp  d_fulfil -2.294±0.472  d_leg -0.280
+    Blend-greedy lam= 4.0: slot R_F  70.4%  incr +6.85±0.46pp  d_fulfil -0.664±0.342  d_leg -0.117
+    Blend-greedy lam= 8.0: slot R_F  99.6%  incr +8.07±0.47pp  d_fulfil +0.028±0.407  d_leg +0.021
+               F          slot R_F 100.0%  incr +8.08±0.47pp  d_fulfil +0.045±0.443  d_leg +0.022
+  beta 70%, ratio 7: U R_F share 12.0%, U fulfil 10.99
+     Blend-aware lam= 0.0: slot R_F   0.0%  incr +0.44±0.20pp  d_fulfil -0.524±0.101  d_leg -0.073
+     Blend-aware lam= 0.5: slot R_F  16.1%  incr +0.99±0.24pp  d_fulfil -0.591±0.123  d_leg -0.073
+     Blend-aware lam= 1.0: slot R_F  19.4%  incr +1.53±0.20pp  d_fulfil -0.527±0.104  d_leg -0.069
+     Blend-aware lam= 2.0: slot R_F  25.5%  incr +2.22±0.19pp  d_fulfil -0.502±0.120  d_leg -0.064
+     Blend-aware lam= 4.0: slot R_F  36.7%  incr +2.96±0.24pp  d_fulfil -0.405±0.096  d_leg -0.053
+     Blend-aware lam= 8.0: slot R_F  50.0%  incr +3.29±0.26pp  d_fulfil -0.306±0.124  d_leg -0.039
+    Blend-greedy lam= 0.0: slot R_F   0.0%  incr +0.37±0.22pp  d_fulfil -0.494±0.113  d_leg -0.064
+    Blend-greedy lam= 0.5: slot R_F  18.4%  incr +1.02±0.23pp  d_fulfil -0.484±0.113  d_leg -0.060
+    Blend-greedy lam= 1.0: slot R_F  23.7%  incr +1.68±0.24pp  d_fulfil -0.507±0.103  d_leg -0.059
+    Blend-greedy lam= 2.0: slot R_F  36.6%  incr +2.64±0.25pp  d_fulfil -0.430±0.102  d_leg -0.049
+    Blend-greedy lam= 4.0: slot R_F  68.9%  incr +3.39±0.27pp  d_fulfil -0.186±0.112  d_leg -0.020
+    Blend-greedy lam= 8.0: slot R_F  98.5%  incr +3.52±0.27pp  d_fulfil -0.044±0.109  d_leg +0.000
+               F          slot R_F 100.0%  incr +3.52±0.27pp  d_fulfil -0.054±0.103  d_leg +0.001
+  beta 70%, ratio 10: U R_F share 12.0%, U fulfil 16.01
+     Blend-aware lam= 0.0: slot R_F   0.0%  incr +0.53±0.19pp  d_fulfil -0.729±0.152  d_leg -0.084
+     Blend-aware lam= 0.5: slot R_F  16.5%  incr +1.20±0.23pp  d_fulfil -0.695±0.174  d_leg -0.084
+     Blend-aware lam= 1.0: slot R_F  19.8%  incr +1.75±0.22pp  d_fulfil -0.801±0.165  d_leg -0.080
+     Blend-aware lam= 2.0: slot R_F  26.1%  incr +2.49±0.22pp  d_fulfil -0.617±0.166  d_leg -0.071
+     Blend-aware lam= 4.0: slot R_F  37.7%  incr +3.05±0.22pp  d_fulfil -0.496±0.181  d_leg -0.058
+     Blend-aware lam= 8.0: slot R_F  50.9%  incr +3.33±0.24pp  d_fulfil -0.374±0.198  d_leg -0.044
+    Blend-greedy lam= 0.0: slot R_F   0.0%  incr +0.47±0.20pp  d_fulfil -0.684±0.232  d_leg -0.078
+    Blend-greedy lam= 0.5: slot R_F  18.4%  incr +1.27±0.22pp  d_fulfil -0.709±0.165  d_leg -0.077
+    Blend-greedy lam= 1.0: slot R_F  23.6%  incr +1.99±0.23pp  d_fulfil -0.671±0.220  d_leg -0.072
+    Blend-greedy lam= 2.0: slot R_F  36.4%  incr +2.86±0.22pp  d_fulfil -0.572±0.180  d_leg -0.054
+    Blend-greedy lam= 4.0: slot R_F  69.9%  incr +3.44±0.28pp  d_fulfil -0.197±0.271  d_leg -0.022
+    Blend-greedy lam= 8.0: slot R_F  99.1%  incr +3.52±0.27pp  d_fulfil -0.041±0.171  d_leg +0.001
+               F          slot R_F 100.0%  incr +3.52±0.27pp  d_fulfil +0.004±0.160  d_leg +0.001
