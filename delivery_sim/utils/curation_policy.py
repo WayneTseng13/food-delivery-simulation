@@ -36,8 +36,11 @@ config.curation_policy (NOT inferred from parameter values):
 silent fallback to operational mode.
 """
 
+import math
+
 from delivery_sim.utils.location_utils import calculate_distance
 from delivery_sim.utils.logging_system import get_logger
+from delivery_sim.utils.customer_choice_model import CustomerChoiceModel
 
 
 class CurationPolicy:
@@ -115,7 +118,7 @@ class CurationPolicy:
                                    featuring-cost analysis; never gated.
     """
 
-    _VALID_MODES = {'operational', 'featured'}
+    _VALID_MODES = {'operational', 'featured', 'aware'}
 
     def __init__(self, restaurant_repository, driver_repository, config,
                  featured_restaurant_id=None):
@@ -143,6 +146,25 @@ class CurationPolicy:
                     f"nothing is incoherent; use 'operational' for pure X''.")
 
         self._featured = None  # resolved lazily on first select()
+
+        # 'aware' mode: the platform's model of customer choice. beta is the
+        # platform's BELIEF (platform_beta, defaulting to the true beta); the boost
+        # b is taken as known. selection_stream=None: only choice_probabilities()
+        # is ever called here, which consumes no randomness (RNG neutrality kept).
+        self.curation_lambda = getattr(config, 'curation_lambda', 0.0)
+        self.curation_rule = getattr(config, 'curation_rule', 'delta_v')
+        if self.mode == 'aware':
+            platform_beta = getattr(config, 'platform_beta', None)
+            if platform_beta is None:
+                platform_beta = config.customer_distance_sensitivity
+            self._platform_choice = CustomerChoiceModel(
+                beta=platform_beta, b=config.recommendation_boost,
+                selection_stream=None)
+            self._k = math.exp(config.recommendation_boost)
+
+        # Per-arrival diagnostics of the last select(), read by
+        # OrderArrivalService and stamped on the order. None outside 'aware'.
+        self.last_decision = None
 
     # ----- operational optimum (surviving X'') -----
 
@@ -200,11 +222,71 @@ class CurationPolicy:
                     f"found. Known restaurant ids: {known}")
         return self._featured
 
+    # ----- choice-aware Delta-V rule -----
+
+    def _select_aware(self, customer_location, idle_drivers):
+        """
+        Slot the restaurant with the largest expected gain over an empty slot.
+
+            v_j   = lambda * m_j - c_j          m_j = 1 iff j is R_F
+            P_j   = platform's softmax probabilities with an EMPTY slot
+            V0    = sum_j P_j v_j
+            dV(R) = (k-1) P_R (v_R - V0) / (1 + (k-1) P_R)
+
+        c_j is the same state-dependent cost as the greedy rule (_cost_of), so
+        the ONLY difference from 'operational' at lambda = 0 is that P enters.
+        The max dV is always >= 0 (the restaurant with the largest v has
+        v >= V0), so a restaurant is always slotted.
+
+        curation_rule = 'greedy' replaces the argmax of dV by the argmax of v_j
+        (the k -> infinity limit of the same rule: assumes the slot always wins).
+        At lambda = 0 this reproduces 'operational' mode exactly.
+
+        Returns (restaurant, dV of the slotted restaurant).
+        """
+        restaurants = self.restaurant_repository.find_all()
+        probs = self._platform_choice.choice_probabilities(
+            customer_location, restaurants, None)
+
+        featured_id = self.featured_restaurant_id if self.curation_lambda > 0 else None
+        values = []
+        for r in restaurants:
+            v = -self._cost_of(r, customer_location, idle_drivers)
+            if featured_id is not None and r.restaurant_id == featured_id:
+                v += self.curation_lambda
+            values.append(v)
+
+        v0 = sum(p * v for p, v in zip(probs, values))
+        km1 = self._k - 1.0
+        dvs = [km1 * p * (v - v0) / (1.0 + km1 * p) for p, v in zip(probs, values)]
+        if self.curation_rule == 'greedy':
+            idx = max(range(len(values)), key=lambda i: values[i])
+        else:
+            idx = max(range(len(dvs)), key=lambda i: dvs[i])
+        return restaurants[idx], dvs[idx]
+
     # ----- main entry point -----
 
     def select(self, customer_location):
         idle_drivers = self.driver_repository.find_available_drivers()
         r_op, branch = self._select_operational(customer_location, idle_drivers)
+
+        # Choice-aware mode: Delta-V argmax. r_op is the greedy pick, logged so
+        # disagreements between the two rules can be counted.
+        if self.mode == 'aware':
+            r_aw, dv = self._select_aware(customer_location, idle_drivers)
+            is_featured = (self.featured_restaurant_id is not None
+                           and r_aw.restaurant_id == self.featured_restaurant_id)
+            self.last_decision = {
+                'greedy_id': r_op.restaurant_id,
+                'agrees_with_greedy': r_aw.restaurant_id == r_op.restaurant_id,
+                'delta_v': dv,
+                'slotted_featured': is_featured,
+            }
+            self.logger.debug(
+                f"aware_{branch}: restaurant {r_aw.restaurant_id} "
+                f"(greedy {r_op.restaurant_id}, dV={dv:.3f})")
+            return r_aw, 'aware_' + branch, None
 
         # Operational mode (X''): slot R_op, no featuring, no penalty.
         if self.mode == 'operational':

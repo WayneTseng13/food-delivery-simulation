@@ -42,10 +42,13 @@ class OperationalConfig:
                  max_service_duration,             # minutes
 
                  # Curation policy
-                 curation_policy=None,        # None | 'operational' | 'featured'
-                 featured_restaurant_id=None, # required for 'featured'
+                 curation_policy=None,        # None | 'operational' | 'featured' | 'aware'
+                 featured_restaurant_id=None, # required for 'featured'; optional for 'aware'
                  customer_distance_sensitivity=0.0,   # beta (1/km), >= 0
-                 recommendation_boost=0.0):           # b, >= 0
+                 recommendation_boost=0.0,            # b, >= 0
+                 curation_lambda=0.0,                 # 'aware': km one R_F order is worth
+                 platform_beta=None,                  # 'aware': platform's belief of beta (None = true beta)
+                 curation_rule='delta_v'):            # 'aware': 'delta_v' | 'greedy' (argmax v_j, ignores P)
 
         # Arrival process parameters
         self.mean_order_inter_arrival_time = mean_order_inter_arrival_time
@@ -67,7 +70,9 @@ class OperationalConfig:
         #   None            — no curation (Policy U); customer selects unaided
         #   'operational'   — Policy X'' (single_immediate + single_queued)
         #   'featured'      — Policy F (always feature R_F)
-        valid_policies = {None, 'operational', 'featured'}
+        #   'aware'         — choice-aware Delta-V rule, v_j = lambda*m_j - c_j
+        #                     (lambda = 0: O-aware; lambda > 0 with R_F: Blend-aware)
+        valid_policies = {None, 'operational', 'featured', 'aware'}
         if curation_policy not in valid_policies:
             raise ValueError(
                 f"Invalid curation_policy: {curation_policy!r}. "
@@ -100,6 +105,20 @@ class OperationalConfig:
         self.customer_distance_sensitivity = customer_distance_sensitivity
         self.recommendation_boost = recommendation_boost
 
+        # Choice-aware curation parameters.
+        if curation_lambda < 0.0:
+            raise ValueError(f"curation_lambda must be >= 0, got {curation_lambda}.")
+        if curation_lambda > 0.0 and featured_restaurant_id is None:
+            raise ValueError("curation_lambda > 0 requires featured_restaurant_id "
+                             "(lambda prices orders at R_F).")
+        if platform_beta is not None and platform_beta < 0.0:
+            raise ValueError(f"platform_beta must be >= 0, got {platform_beta}.")
+        if curation_rule not in ('delta_v', 'greedy'):
+            raise ValueError(f"curation_rule must be 'delta_v' or 'greedy', got {curation_rule!r}.")
+        self.curation_lambda = curation_lambda
+        self.platform_beta = platform_beta
+        self.curation_rule = curation_rule
+
     def __str__(self):
         return (f"OperationalConfig("
                 f"order_interval={self.mean_order_inter_arrival_time}min, "
@@ -111,7 +130,9 @@ class OperationalConfig:
                 f"curation={self.curation_policy}, "
                 f"featured={self.featured_restaurant_id}, "
                 f"beta={self.customer_distance_sensitivity}, "
-                f"b={self.recommendation_boost})")
+                f"b={self.recommendation_boost}, "
+                f"lambda={self.curation_lambda}, "
+                f"platform_beta={self.platform_beta})")
 
 class ExperimentConfig:
     def __init__(self, simulation_duration, num_replications, operational_master_seed, 

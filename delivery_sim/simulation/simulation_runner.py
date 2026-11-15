@@ -220,7 +220,7 @@ class SimulationRunner:
         if self.config.curation_policy is None:
             curation_policy = None
 
-        elif self.config.curation_policy in ('operational', 'featured'):
+        elif self.config.curation_policy in ('operational', 'featured', 'aware'):
             curation_policy = CurationPolicy(
                 restaurant_repository=self.restaurant_repository,
                 driver_repository=self.driver_repository,

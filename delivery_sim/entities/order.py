@@ -14,7 +14,8 @@ class Order:
     def __init__(self, order_id, restaurant_location, customer_location,
                 arrival_time, curation_result=None, customer_complied=None,
                 featuring_penalty=None, arrival_state=None,
-                origin_restaurant_id=None):
+                origin_restaurant_id=None, curation_decision=None,
+                slotted_restaurant_id=None):
         """Initialize a new order with its basic properties."""
         self.logger = get_logger("entities.order")
 
@@ -67,6 +68,12 @@ class Order:
         # NOT the recommended restaurant when they differ. Used for
         # featured_origin_rate (business capture) and per-restaurant load shares.
         self.origin_restaurant_id = origin_restaurant_id                     # NEW
+
+        # Restaurant placed in the slot (None under U), and, under 'aware' mode,
+        # the decision record: {'greedy_id', 'agrees_with_greedy', 'delta_v',
+        # 'slotted_featured'}. None for every other policy.
+        self.slotted_restaurant_id = slotted_restaurant_id
+        self.curation_decision = curation_decision
 
         # State and relationships
         self.state = OrderState.CREATED

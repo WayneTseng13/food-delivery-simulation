@@ -106,6 +106,9 @@ class OrderArrivalService:
             (restaurant_location, curation_result, customer_complied,
             featuring_penalty, origin_restaurant_id) = \
                 self._select_restaurant_location(customer_location)
+            curation_decision = (
+                getattr(self.curation_policy, 'last_decision', None)
+                if self.curation_policy is not None else None)
 
             self.logger.debug(
                 f"[t={self.env.now:.2f}] Generated attributes for order {order_id}: "
@@ -123,6 +126,8 @@ class OrderArrivalService:
                         featuring_penalty=featuring_penalty,
                         arrival_state=arrival_state,
                         origin_restaurant_id=origin_restaurant_id,
+                        curation_decision=curation_decision,
+                        slotted_restaurant_id=self._last_boost_id,
                     )
 
             self.order_repository.add(new_order)
@@ -199,6 +204,8 @@ class OrderArrivalService:
                 f"restaurant; the no-slot path belongs to Policy U "
                 f"(curation_policy is None).")
             boost_id = recommendation.restaurant_id
+
+        self._last_boost_id = boost_id
 
         # One softmax draw resolves the customer's choice for every policy.
         selected = self.choice_model.select(customer_location, restaurants, boost_id)
