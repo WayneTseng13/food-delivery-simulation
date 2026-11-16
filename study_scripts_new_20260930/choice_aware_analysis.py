@@ -18,7 +18,9 @@ import matplotlib.pyplot as plt
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, 'results')
 
-with open(os.path.join(OUT, 'choice_aware_results.pkl'), 'rb') as f:
+import sys
+SUFFIX = sys.argv[1] if len(sys.argv) > 1 else ''      # e.g. '_k5'
+with open(os.path.join(OUT, f'choice_aware_results{SUFFIX}.pkl'), 'rb') as f:
     blob = pickle.load(f)
 R = blob['results']
 
@@ -91,7 +93,7 @@ for ax, ratio in zip(axes, ratios):
     ax.grid(alpha=0.3)
 axes[0].legend()
 fig.tight_layout()
-fig.savefig(os.path.join(OUT, 'q1_fulfillment_by_beta.png'), dpi=160)
+fig.savefig(os.path.join(OUT, f'q1_fulfillment_by_beta{SUFFIX}.png'), dpi=160)
 
 # Q1 figure: paired difference aware - greedy with CI
 fig, axes = plt.subplots(1, 2, figsize=(11, 4))
@@ -108,13 +110,13 @@ for ax, (m, title) in zip(axes, [('fulfil', 'Fulfillment time (min)'), ('leg_km'
     ax.grid(alpha=0.3)
 axes[0].legend()
 fig.tight_layout()
-fig.savefig(os.path.join(OUT, 'q1_paired_diff.png'), dpi=160)
+fig.savefig(os.path.join(OUT, f'q1_paired_diff{SUFFIX}.png'), dpi=160)
 
 # ---------------- Q2 ----------------
 q2_labels = sorted({k[0] for k in R if k[2] == 'Blend-aware'}, key=lambda s: int(s[:-1]))
 lams = sorted({k[3] for k in R if k[2] == 'Blend-aware'})
 lines.append("")
-lines.append("Q2: promotion frontier, R_F = " + blob['featured'])
+lines.append(f"Q2: promotion frontier, R_F = {blob['featured']}, k = {blob.get('k', 2.0):g}")
 lines.append("  incr = R_F share minus paired U share (pp of all orders); d_fulfil = vs paired U (min)")
 fig, axes = plt.subplots(len(q2_labels), len(ratios), figsize=(11, 4.2 * len(q2_labels)))
 axes = np.atleast_2d(axes)
@@ -152,9 +154,9 @@ for i, lab in enumerate(q2_labels):
         ax.grid(alpha=0.3)
         ax.legend(fontsize=8)
 fig.tight_layout()
-fig.savefig(os.path.join(OUT, 'q2_frontier.png'), dpi=160)
+fig.savefig(os.path.join(OUT, f'q2_frontier{SUFFIX}.png'), dpi=160)
 
 text = '\n'.join(lines)
-with open(os.path.join(OUT, 'choice_aware_summary.txt'), 'w') as f:
+with open(os.path.join(OUT, f'choice_aware_summary{SUFFIX}.txt'), 'w') as f:
     f.write(text)
 print(text)

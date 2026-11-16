@@ -60,13 +60,13 @@ def get_infrastructure():
     return _INFRA
 
 
-def make_config(ratio, beta, policy, featured_id=None, lam=0.0, platform_beta=None, rule='delta_v'):
+def make_config(ratio, beta, policy, featured_id=None, lam=0.0, platform_beta=None, rule='delta_v', k=K):
     kw = dict(mean_order_inter_arrival_time=1.0,
               mean_driver_inter_arrival_time=ratio,
               **PAIRING, **SERVICE,
               curation_policy=policy,
               customer_distance_sensitivity=beta,
-              recommendation_boost=B if policy is not None else 0.0,
+              recommendation_boost=math.log(k) if policy is not None else 0.0,
               curation_lambda=lam, platform_beta=platform_beta, curation_rule=rule)
     if featured_id is not None:
         kw['featured_restaurant_id'] = featured_id

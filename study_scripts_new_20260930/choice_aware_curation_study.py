@@ -11,7 +11,9 @@ Q2  What does promotion cost operationally?
 All cells use the same operational master seed, so replication i of every
 policy sees the same arrival times and customer locations (paired comparison).
 
-Run:  python choice_aware_curation_study.py   -> results/choice_aware_results.pkl
+Run:  python choice_aware_curation_study.py [k]   -> results/choice_aware_results[_k{k}].pkl
+      With k given (k != 2), only the Q2 grid is run (it contains the Q1 cells
+      for its beta labels).
 """
 import os
 import sys
@@ -21,6 +23,7 @@ from multiprocessing import Pool
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from choice_aware_common import LABEL_BETAS, make_config, run_cell
+import functools
 
 REPS = 20
 DURATION = 2000
@@ -58,6 +61,10 @@ def build_cells():
 
 
 if __name__ == '__main__':
+    k = float(sys.argv[1]) if len(sys.argv) > 1 else 2.0
+    if k != 2.0:
+        Q1_LABELS = Q2_LABELS
+        make_config = functools.partial(make_config, k=k)
     cells = build_cells()
     print(f"{len(cells)} cells x {REPS} reps")
     t0 = time.time()
@@ -67,7 +74,8 @@ if __name__ == '__main__':
         for i, (key, summaries, dt) in enumerate(pool.starmap(run_cell, args, chunksize=1)):
             results[key] = summaries
     os.makedirs('results', exist_ok=True)
-    with open('results/choice_aware_results.pkl', 'wb') as f:
+    suffix = '' if k == 2.0 else f'_k{k:g}'
+    with open(f'results/choice_aware_results{suffix}.pkl', 'wb') as f:
         pickle.dump({'results': results, 'reps': REPS, 'duration': DURATION,
-                     'warmup': WARMUP, 'featured': FEATURED}, f)
+                     'warmup': WARMUP, 'featured': FEATURED, 'k': k}, f)
     print(f"done in {time.time() - t0:.0f}s")
