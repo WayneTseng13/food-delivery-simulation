@@ -153,6 +153,8 @@ class CurationPolicy:
         # is ever called here, which consumes no randomness (RNG neutrality kept).
         self.curation_lambda = getattr(config, 'curation_lambda', 0.0)
         self.curation_rule = getattr(config, 'curation_rule', 'delta_v')
+        # lambda when no idle driver exists (busy state); None = same as curation_lambda.
+        self.curation_lambda_busy = getattr(config, 'curation_lambda_busy', None)
         if self.mode == 'aware':
             platform_beta = getattr(config, 'platform_beta', None)
             if platform_beta is None:
@@ -248,12 +250,16 @@ class CurationPolicy:
         probs = self._platform_choice.choice_probabilities(
             customer_location, restaurants, None)
 
-        featured_id = self.featured_restaurant_id if self.curation_lambda > 0 else None
+        # State-dependent promotion: lambda_busy applies when no idle driver exists.
+        lam = self.curation_lambda
+        if not idle_drivers and self.curation_lambda_busy is not None:
+            lam = self.curation_lambda_busy
+        featured_id = self.featured_restaurant_id if lam > 0 else None
         values = []
         for r in restaurants:
             v = -self._cost_of(r, customer_location, idle_drivers)
             if featured_id is not None and r.restaurant_id == featured_id:
-                v += self.curation_lambda
+                v += lam
             values.append(v)
 
         v0 = sum(p * v for p, v in zip(probs, values))

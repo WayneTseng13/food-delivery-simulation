@@ -48,7 +48,8 @@ class OperationalConfig:
                  recommendation_boost=0.0,            # b, >= 0
                  curation_lambda=0.0,                 # 'aware': km one R_F order is worth
                  platform_beta=None,                  # 'aware': platform's belief of beta (None = true beta)
-                 curation_rule='delta_v'):            # 'aware': 'delta_v' | 'greedy' (argmax v_j, ignores P)
+                 curation_rule='delta_v',             # 'aware': 'delta_v' | 'greedy' (argmax v_j, ignores P)
+                 curation_lambda_busy=None):          # 'aware': lambda when NO idle driver (None = curation_lambda)
 
         # Arrival process parameters
         self.mean_order_inter_arrival_time = mean_order_inter_arrival_time
@@ -119,6 +120,14 @@ class OperationalConfig:
         self.platform_beta = platform_beta
         self.curation_rule = curation_rule
 
+        # State-dependent promotion: lambda used when no idle driver exists.
+        if curation_lambda_busy is not None:
+            if curation_lambda_busy < 0.0:
+                raise ValueError(f"curation_lambda_busy must be >= 0, got {curation_lambda_busy}.")
+            if featured_restaurant_id is None:
+                raise ValueError("curation_lambda_busy requires featured_restaurant_id.")
+        self.curation_lambda_busy = curation_lambda_busy
+
     def __str__(self):
         return (f"OperationalConfig("
                 f"order_interval={self.mean_order_inter_arrival_time}min, "
@@ -132,6 +141,7 @@ class OperationalConfig:
                 f"beta={self.customer_distance_sensitivity}, "
                 f"b={self.recommendation_boost}, "
                 f"lambda={self.curation_lambda}, "
+                f"lambda_busy={self.curation_lambda_busy}, "
                 f"platform_beta={self.platform_beta})")
 
 class ExperimentConfig:

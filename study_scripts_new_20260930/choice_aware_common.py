@@ -60,14 +60,16 @@ def get_infrastructure():
     return _INFRA
 
 
-def make_config(ratio, beta, policy, featured_id=None, lam=0.0, platform_beta=None, rule='delta_v', k=K):
+def make_config(ratio, beta, policy, featured_id=None, lam=0.0, platform_beta=None, rule='delta_v', k=K,
+                lam_busy=None):
     kw = dict(mean_order_inter_arrival_time=1.0,
               mean_driver_inter_arrival_time=ratio,
               **PAIRING, **SERVICE,
               curation_policy=policy,
               customer_distance_sensitivity=beta,
               recommendation_boost=math.log(k) if policy is not None else 0.0,
-              curation_lambda=lam, platform_beta=platform_beta, curation_rule=rule)
+              curation_lambda=lam, platform_beta=platform_beta, curation_rule=rule,
+              curation_lambda_busy=lam_busy)
     if featured_id is not None:
         kw['featured_restaurant_id'] = featured_id
     return OperationalConfig(**kw)
@@ -102,8 +104,12 @@ def summarize(rep, warmup, featured_id):
         imm = [o for o in dec if o.arrival_state == 'immediate']
         out['agree_imm'] = np.mean([o.curation_decision['agrees_with_greedy'] for o in imm]) if imm else np.nan
         out['slot_rf'] = np.mean([o.curation_decision['slotted_featured'] for o in dec])
+        q = [o for o in dec if o.arrival_state != 'immediate']
+        out['slot_rf_imm'] = np.mean([o.curation_decision['slotted_featured'] for o in imm]) if imm else np.nan
+        out['slot_rf_q'] = np.mean([o.curation_decision['slotted_featured'] for o in q]) if q else np.nan
     else:
         out['agree'] = out['agree_imm'] = out['slot_rf'] = np.nan
+        out['slot_rf_imm'] = out['slot_rf_q'] = np.nan
     return out
 
 
